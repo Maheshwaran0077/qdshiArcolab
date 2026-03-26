@@ -6,22 +6,23 @@ const CircularTracker = ({ letter, daysData }) => {
   const center = size / 2;
   const radius = 85;
   const strokeWidth = 22;
-  const totalDays = 31;
+ 
+  const totalDays = daysData.length || 31; 
 
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="transform -rotate-90 overflow-visible">
         {daysData.map((status, i) => {
-          const anglePerSegment = 360 / totalDays;
+           const anglePerSegment = 360 / totalDays;
           const startAngle = i * anglePerSegment;
-          const endAngle = (i + 1) * anglePerSegment - 1.5;
+          const endAngle = (i + 1) * anglePerSegment - 1.5; 
 
           const x1 = center + radius * Math.cos((Math.PI * startAngle) / 180);
           const y1 = center + radius * Math.sin((Math.PI * startAngle) / 180);
           const x2 = center + radius * Math.cos((Math.PI * endAngle) / 180);
           const y2 = center + radius * Math.sin((Math.PI * endAngle) / 180);
 
-          let color = "#E2E8F0";
+          let color = "#E2E8F0"; // Default (none)
           if (status === "success") color = "#22C55E";
           if (status === "fail") color = "#EF4444";
 
@@ -31,8 +32,8 @@ const CircularTracker = ({ letter, daysData }) => {
 
           return (
             <motion.g 
-              key={i}
-              whileHover={{ scale: 1.45, filter: "brightness(1.1)" }}
+              key={`${i}-${totalDays}`} // Key includes totalDays to force re-render on month change
+              whileHover={{ scale: 1.1, filter: "brightness(1.1)" }}
               transition={{ type: "spring", stiffness: 300 }}
               className="cursor-pointer"
             >
@@ -41,7 +42,8 @@ const CircularTracker = ({ letter, daysData }) => {
                 fill="none"
                 stroke={color}
                 strokeWidth={strokeWidth}
-                className="transition-all"
+                strokeLinecap="butt"
+                className="transition-all duration-300"
               />
               
               <text
@@ -58,7 +60,6 @@ const CircularTracker = ({ letter, daysData }) => {
                 {i + 1}
               </text>
             </motion.g>
-            
           );
         })}
       </svg>

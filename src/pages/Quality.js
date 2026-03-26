@@ -1,278 +1,295 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Star, Maximize2, Edit3, X, AlertCircle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Cell } from 'recharts';
+import { 
+  ArrowLeft, Edit3, X, AlertCircle, 
+  ChevronLeft, ChevronRight, Star, Maximize2 
+} from 'lucide-react';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
+  ResponsiveContainer, Cell, LineChart, Line 
+} from 'recharts';
 import CircularTracker from '../components/CircularTracker';
 import { dashboardMetrics as initialData } from '../dashboardData'; 
 
+const API_BASE_URL = 'http://localhost:5000/api/metrics';
+
 const QualityPage = () => {
   const navigate = useNavigate();
-  const [activeDay, setActiveDay] = useState(new Date().getDate());
+  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState(initialData);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedIssue, setSelectedIssue] = useState("None");
+  const [selectedIssue, setSelectedIssue] = useState("Target Met");
+
+  const [viewDate, setViewDate] = useState(new Date()); 
+  const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
   
-   const [metrics, setMetrics] = useState(() => {
-    const saved = localStorage.getItem('production_dashboard_data');
-    if (saved) return JSON.parse(saved);
-    
-    return initialData.map(m => ({
-      ...m,
-      issueLogs: m.issueLogs || {} 
-    }));
-  });
+  const viewMonthName = viewDate.toLocaleString('default', { month: 'long' }).toUpperCase();
+  const viewYear = viewDate.getFullYear();
 
-  useEffect(() => {
-    localStorage.setItem('production_dashboard_data', JSON.stringify(metrics));
-  }, [metrics]);
-
-  const qData = useMemo(() => 
-    metrics.find(m => m.letter === 'Q') || metrics[1], 
-  [metrics]);
-
-  const currentMonthName = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date());
-  const currentYear = 2026;
-
-  const dailyPerformance = useMemo(() => Array.from({ length: 31 }, (_, i) => ({
-    day: i + 1,
-    issue: Math.floor(Math.random() * 5),
-    action: Math.floor(Math.random() * 4),
-  })), []);
-
-  const alertLogs = useMemo(() => {
-    return Object.entries(qData.issueLogs || {})
-      .map(([dayIndex, reason]) => ({
-        date: `${parseInt(dayIndex) + 1}/06/${currentYear}`,
-        reason,
-        dayNum: parseInt(dayIndex) + 1
-      }))
-      .sort((a, b) => a.dayNum - b.dayNum); 
-  }, [qData.issueLogs, currentYear]);
-
-   const handleUpdateStatus = () => {
-    const updatedMetrics = metrics.map(m => {
-      if (m.letter === 'Q') {
-        const newDaysData = [...m.daysData];
-        const newIssueLogs = { ...m.issueLogs };
-        const dayIndex = activeDay - 1;
-
-          if (newDaysData[dayIndex] !== "none") {
-          if (selectedIssue === "None") {
-            newDaysData[dayIndex] = "success";
-            delete newIssueLogs[dayIndex];
-          } else {
-            newDaysData[dayIndex] = "fail";
-            newIssueLogs[dayIndex] = selectedIssue;
-          }
-          
-          const newAlerts = newDaysData.filter(d => d === "fail").length;
-          const newSuccess = newDaysData.filter(d => d === "success").length;
-          
-          return { 
-            ...m, 
-            daysData: newDaysData, 
-            alerts: newAlerts, 
-            success: newSuccess, 
-            issueLogs: newIssueLogs 
-          };
-        }
-      }
-      return m;
-    });
-
-    setMetrics(updatedMetrics);
-    setIsModalOpen(false);
-    setSelectedIssue("None");  
+  const handleMonthChange = (offset) => {
+    const newDate = new Date(viewDate);
+    newDate.setMonth(newDate.getMonth() + offset);
+    setViewDate(newDate);
   };
 
-  const barData = [
-    { name: 'Alerts', value: qData.alerts || 0, color: '#ef4444' },
-    { name: 'Success', value: qData.success || 0, color: '#22c55e' },
-    { name: 'Holiday', value: qData.daysData.filter(s => s === "none").length, color: '#94a3b8' },
-  ];
+  useEffect(() => {
+    const fetchMetrics = async () => {
+      try {
+        const response = await fetch(API_BASE_URL);
+        const dbData = await response.json();
+        if (dbData?.length > 0) {
+          setMetrics(initialData.map(b => dbData.find(d => d.letter === b.letter) || b));
+        }
+      } catch (error) { console.error(error); } finally { setLoading(false); }
+    };
+    fetchMetrics();
+  }, []);
+
+  const qData = useMemo(() => metrics.find(m => m.letter === 'Q') || metrics[1], [metrics]);
+
+  const daysInViewMonth = useMemo(() => new Date(viewYear, viewDate.getMonth() + 1, 0).getDate(), [viewDate, viewYear]);
+
+  const dynamicDaysData = useMemo(() => {
+    const baseDays = Array(daysInViewMonth).fill("none");
+    const logs = Array.isArray(qData.issueLogs) ? qData.issueLogs : [];
+    logs.forEach(log => {
+      const d = new Date(log.rawDate);
+      if (d.getMonth() === viewDate.getMonth() && d.getFullYear() === viewYear) {
+        const idx = d.getDate() - 1;
+        if (idx >= 0 && idx < baseDays.length) {
+          baseDays[idx] = log.reason === "Target Met" ? "success" : "fail";
+        }
+      }
+    });
+    return baseDays;
+  }, [qData.issueLogs, viewDate, viewYear, daysInViewMonth]);
+
+  const stats = useMemo(() => ({
+    alerts: dynamicDaysData.filter(s => s === "fail").length,
+    success: dynamicDaysData.filter(s => s === "success").length,
+    holiday: dynamicDaysData.filter(s => s === "none").length
+  }), [dynamicDaysData]);
+
+  const annualTrend = useMemo(() => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const logs = Array.isArray(qData.issueLogs) ? qData.issueLogs : [];
+    return months.map((m, i) => {
+      const mLogs = logs.filter(l => new Date(l.rawDate).getMonth() === i && new Date(l.rawDate).getFullYear() === viewYear);
+      return { 
+        name: m, 
+        fail: mLogs.filter(l => l.reason !== "Target Met").length, 
+        pass: mLogs.filter(l => l.reason === "Target Met").length 
+      };
+    });
+  }, [qData.issueLogs, viewYear]);
+
+  const handleUpdateStatus = async () => {
+    let updatedLogs = Array.isArray(qData.issueLogs) ? [...qData.issueLogs] : [];
+    const [y, m, d] = customDate.split('-');
+    const newEntry = { date: `${d}/${m}/${y}`, rawDate: customDate, reason: selectedIssue };
+    const idx = updatedLogs.findIndex(log => log.rawDate === customDate);
+    if (idx !== -1) updatedLogs[idx] = newEntry; else updatedLogs.push(newEntry);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...qData, issueLogs: updatedLogs })
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setMetrics(prev => prev.map(m => m.letter === 'Q' ? saved : m));
+        setIsModalOpen(false);
+      }
+    } catch (e) { alert("Sync failed"); }
+  };
+
+  if (loading) return <div className="h-screen flex items-center justify-center bg-white text-blue-600 font-bold">LOADING...</div>;
 
   return (
-    <div className="p-4 bg-[#F1F5F9] min-h-screen font-sans relative">
+     <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-[#F0F4F8] text-[#334155] font-sans flex flex-col">
       
-      {/* MODAL */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-slate-800 p-4 flex justify-between items-center text-white">
-              <h3 className="font-bold flex items-center gap-2"><Edit3 size={18}/> Log Issue: Day {activeDay}</h3>
-              <button onClick={() => setIsModalOpen(false)}><X size={20}/></button>
+       <nav className="flex flex-col sm:flex-row justify-between items-center px-4 sm:px-6 py-4 bg-[#F0F4F8] gap-4">
+        <button onClick={() => navigate('/')} className="flex items-center gap-1 text-[#475569] font-bold text-xs uppercase self-start sm:self-center">
+          <ChevronLeft size={20} /> BACK
+        </button>
+        <button onClick={() => setIsModalOpen(true)} className="w-full sm:w-auto bg-[#3B82F6] hover:bg-blue-700 text-white px-8 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider shadow-md transition-all">
+          UPDATE {viewMonthName.split(' ')[0]}
+        </button>
+      </nav>
+
+       <main className="flex-1 grid grid-cols-12 gap-4 sm:gap-5 px-4 sm:px-6 pb-6 lg:overflow-hidden">
+        
+        <div className="col-span-12 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6 flex flex-col items-center">
+  
+  <div className="flex items-center justify-between w-full mb-8 bg-[#F8FAFC] px-4 py-2 rounded-full border border-slate-100">
+    <button onClick={() => handleMonthChange(-1)} className="text-blue-500 hover:scale-110 transition p-1"><ChevronLeft size={24}/></button>
+    <span className="text-[12px] sm:text-[13px] font-black text-blue-600 tracking-widest text-center">{viewMonthName} {viewYear}</span>
+    <button onClick={() => handleMonthChange(1)} className="text-blue-500 hover:scale-110 transition p-1"><ChevronRight size={24}/></button>
+  </div>
+ <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-1">
+        Department
+      </span>
+      <span className="text-2xl font-black text-slate-800 uppercase tracking-tighter">
+        {qData.name || "Quality"}
+      </span>
+   <div className="flex-1 flex items-center justify-center min-h-[250px] w-full max-w-[300px] relative">
+     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none translate-y-[-10px]">
+      
+    </div>
+     
+
+    <CircularTracker 
+      letter={qData.letter} 
+      daysData={dynamicDaysData} 
+      size={window.innerWidth < 640 ? 220 : 280} 
+    />
+  </div>
+
+  <div className="grid grid-cols gap-2 w-full mt-6">
+    <StatBox val={stats.alerts} label="Alerts" color="red" />
+    <StatBox val={stats.success} label="Success" color="green" />
+    <StatBox val={stats.holiday} label="Holiday" color="slate" />
+  </div>
+</div>
+ 
+<div className="col-span-12 md:col-span-6 lg:col-span-4 flex flex-col gap-5 lg:overflow-hidden">
+  
+   <ChartCard title={`${viewMonthName} ALERT HISTORY`}>
+    
+    <div className="overflow-y-auto pr-2 custom-scrollbar max-h-[320px] min-h-[200px]">
+      <table className="w-full text-[11px] border-separate border-spacing-0">
+        <thead className="bg-[#E2E8F0] sticky top-0 z-20 shadow-sm">
+          <tr>
+            <th className="p-3 text-left font-black text-[#64748B] rounded-tl-xl">Date</th>
+            <th className="p-3 text-left font-black text-[#64748B] rounded-tr-xl">Reason</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {stats.alerts > 0 ? (
+            (qData.issueLogs || []).filter(l => new Date(l.rawDate).getMonth() === viewDate.getMonth()).map((log, i) => (
+              <tr key={i} className="hover:bg-slate-50 transition-colors group">
+                <td className="p-3 font-bold text-slate-500">{log.date}</td>
+                <td className="p-3 font-black text-red-500 flex items-center gap-2 uppercase tracking-tight">
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                  {log.reason}
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan="2" className="p-12 text-center text-slate-300 font-bold uppercase italic tracking-widest">
+                No alerts recorded
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </ChartCard>
+
+   <ChartCard title={`${viewYear} PERFORMANCE SUMMARY`}>
+     <div className="overflow-x-auto h-full custom-scrollbar">
+        <table className="min-w-[600px] lg:min-w-full text-left text-[10px] border-collapse">
+          <thead className="bg-[#F1F5F9] text-[#64748B] font-black uppercase sticky top-0">
+            <tr>
+              <th className="p-3 border-b">Category</th>
+              {annualTrend.map(m => <th key={m.name} className="p-3 text-center border-b">{m.name}</th>)}
+            </tr>
+          </thead>
+          <tbody className="font-bold">
+            <tr className="border-b">
+              <td className="p-3 whitespace-nowrap text-slate-500">Alerts</td>
+              {annualTrend.map((m, i) => <td key={i} className={`p-3 text-center ${m.fail > 0 ? 'text-red-500' : 'text-slate-200'}`}>{m.fail || '--'}</td>)}
+            </tr>
+            <tr>
+              <td className="p-3 whitespace-nowrap text-slate-500">Success</td>
+              {annualTrend.map((m, i) => <td key={i} className={`p-3 text-center ${m.pass > 0 ? 'text-green-500' : 'text-slate-200'}`}>{m.pass || '--'}</td>)}
+            </tr>
+          </tbody>
+        </table>
+     </div>
+  </ChartCard>
+</div>
+
+         <div className="col-span-12 md:col-span-6 lg:col-span-5 flex flex-col gap-5 lg:overflow-hidden">
+          <ChartCard title={`${viewMonthName} DISTRIBUTION`}>
+            <div className="h-[200px] sm:h-[220px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={[{ name: 'Alerts', value: stats.alerts }, { name: 'Success', value: stats.success }, { name: 'Holiday', value: stats.holiday }]}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                  <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
+                  <YAxis fontSize={10} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip cursor={{ fill: '#F8FAFC' }} />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={window.innerWidth < 640 ? 30 : 50}>
+                    <Cell fill="#EF4444" /><Cell fill="#22C55E" /><Cell fill="#94A3B8" />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-            <div className="p-6">
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Issue Category</label>
-              <select 
-                value={selectedIssue}
-                onChange={(e) => setSelectedIssue(e.target.value)}
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {/* <option value="None">✅ No Issue (Success)</option> */}
-                <option value="No Manpower">⚠️ No Manpower</option>
+          </ChartCard>
+
+          <ChartCard title={`${viewYear} PERFORMANCE TREND`}>
+            <div className="h-[200px] sm:h-[220px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={annualTrend}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                  <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
+                  <YAxis fontSize={10} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="fail" stroke="#EF4444" strokeWidth={3} dot={{ r: 4, fill: '#EF4444' }} name="Alerts" />
+                  <Line type="monotone" dataKey="pass" stroke="#22C55E" strokeWidth={3} dot={{ r: 4, fill: '#22C55E' }} name="Success" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartCard>
+        </div>
+      </main>
+
+        {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[360px] p-6 sm:p-8 border border-slate-100">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="font-black uppercase tracking-widest text-[10px] flex items-center gap-2 text-slate-800">
+                <Edit3 size={16} className="text-blue-500"/> LOG RECORD
+              </h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-300 hover:text-red-500"><X size={20}/></button>
+            </div>
+            <div className="space-y-4">
+              <input type="date" value={customDate} onChange={(e)=>setCustomDate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 text-sm outline-none focus:ring-2 ring-blue-500" />
+              <select value={selectedIssue} onChange={(e)=>setSelectedIssue(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 text-sm outline-none focus:ring-2 ring-blue-500">
+                <option value="Target Met">✅ Target Met</option>
+                <option value="Machine Breakdown">⚠️ Machine Breakdown</option>
                 <option value="No Power">⚠️ No Power</option>
-                
+                <option value="No Manpower">⚠️ No Manpower</option>
+                <option value="Quality Reject">⚠️ Quality Reject</option>
               </select>
-              <button onClick={handleUpdateStatus} className="w-full mt-6 bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
-                Submit & Save Changes
-              </button>
+              <button onClick={handleUpdateStatus} className="w-full bg-[#3B82F6] py-3 sm:py-4 rounded-xl font-black uppercase text-[11px] text-white tracking-widest hover:bg-blue-700 active:scale-95 transition-all">UPDATE DATA</button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <button onClick={() => navigate('/')} className="flex items-center gap-2 text-slate-600 font-bold hover:text-blue-600 transition">
-          <ArrowLeft size={20} /> Dashboard
-        </button>
-        <div className="flex items-center gap-3">
-            <span className="text-xs font-bold text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-                Status: <span className="text-green-500 font-black">Online</span>
-            </span>
-            <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-blue-600 text-white text-[10px] font-black uppercase px-4 py-2 rounded-full shadow-md hover:bg-blue-700 transition-all active:scale-95">
-              <Edit3 size={14} /> Update Day {activeDay}
-            </button>
-        </div>
-      </div>
-
-      <div className="flex flex-col lg:flex-row gap-5">
-        
-        {/* SIDEBAR */}
-        <div className="w-full lg:w-[320px] bg-white rounded-xl shadow-md border border-slate-100 p-6 flex flex-col items-center">
-          <h1 className="text-2xl font-black text-slate-800 tracking-tighter uppercase mb-1">{qData.label}</h1>
-          <p className="text-xs font-bold text-blue-500 mb-6 uppercase">{currentMonthName} {activeDay}, {currentYear}</p>
-          <CircularTracker letter={qData.letter} daysData={qData.daysData} onDayClick={(day) => setActiveDay(day)} activeDay={activeDay} />
-          
-          <div className="grid grid-cols-1 gap-2 w-full mt-8">
-             <div className="flex items-center justify-between bg-red-500 p-3 rounded-lg text-white shadow-sm">
-                <span className="text-[10px] font-bold uppercase">Total Alerts</span>
-                <span className="text-lg font-black">{qData.alerts}</span>
-             </div>
-             <div className="flex items-center justify-between bg-green-500 p-3 rounded-lg text-white shadow-sm">
-                <span className="text-[10px] font-bold uppercase">Total Success</span>
-                <span className="text-lg font-black">{qData.success}</span>
-             </div>
-          </div>
-        </div>
-
-        {/* CONTENT GRID */}
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5">
-          
-          <ChartWrapper title="Metric Distribution">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={barData}>
-                <CartesianGrid strokeDasharray="2 2" vertical={false} stroke="#f1f5f9"/>
-                <XAxis dataKey="name" fontSize={9} axisLine={false} tickLine={false} />
-                <YAxis fontSize={10} axisLine={false} tickLine={false} />
-                <Tooltip cursor={{fill: 'transparent'}} />
-                <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={50}>
-                  {barData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartWrapper>
-
-          <ChartWrapper title="Current Month Alert Analysis">
-            <div className="flex flex-col h-[220px]">
-              <div className="flex items-center justify-between mb-4 px-1">
-                <div className="flex items-center gap-3">
-                   <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-black text-white shadow-sm ${qData.daysData[activeDay-1] === 'fail' ? 'bg-red-500' : 'bg-slate-800'}`}>
-                      <span className="text-[9px] leading-none opacity-80 uppercase font-bold">Day</span>
-                      <span className="text-lg leading-none mt-1">{activeDay}</span>
-                   </div>
-                   <div>
-                     <p className="text-[10px] font-black uppercase text-slate-400 leading-none mb-1">Status</p>
-                     <p className={`text-xs font-bold ${qData.daysData[activeDay-1] === 'fail' ? 'text-red-500' : 'text-green-600'}`}>
-                        {qData.daysData[activeDay-1] === 'fail' ? 'Critical Alert' : 'Target Met'}
-                     </p>
-                   </div>
-                </div>
-                <div className="bg-red-50 px-3 py-2 rounded-lg border border-red-100 text-right">
-                   <p className="text-[9px] font-black text-red-400 uppercase leading-none mb-1">Mtd Alerts</p>
-                   <p className="text-xl font-black text-red-600 leading-none">{qData.alerts}</p>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto border border-slate-100 rounded-lg bg-slate-50 shadow-inner custom-scrollbar">
-                <table className="w-full text-[10px]">
-                  <thead className="bg-slate-200 sticky top-0 z-10">
-                    <tr>
-                      <th className="p-2 text-left text-slate-600 font-black uppercase">Date</th>
-                      <th className="p-2 text-left text-slate-600 font-black uppercase">Alert Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {alertLogs.length > 0 ? alertLogs.map((log, i) => (
-                      <tr key={i} className={`border-t bg-white hover:bg-red-50 transition-colors ${log.dayNum === activeDay ? 'bg-red-50/50' : ''}`}>
-                        <td className="p-2 font-bold text-slate-500">{log.date}</td>
-                        <td className="p-2 font-black text-red-600 flex items-center gap-2">
-                          <AlertCircle size={12} className="shrink-0" /> {log.reason}
-                        </td>
-                      </tr>
-                    )) : (
-                      <tr><td colSpan="2" className="p-8 text-center text-slate-400 italic">No alerts logged for this month.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </ChartWrapper>
-
-          <ChartWrapper title="Monthly Performance Summary">
-            <div className="overflow-x-auto rounded-lg border border-slate-100">
-              <table className="w-full text-left text-[10px]">
-                <thead className="bg-slate-50 text-slate-500 uppercase">
-                  <tr>
-                    <th className="p-2 min-w-[100px]">Category</th>
-                    {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(m => <th key={m} className="p-2 text-center">{m}</th>)}
-                    <th className="p-2 text-red-500 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="font-bold text-slate-700">
-                  <tr className="border-t border-slate-50">
-                    <td className="p-2 flex items-center gap-2 whitespace-nowrap"><div className="w-1.5 h-1.5 rounded-full bg-red-500"/> Alerts</td>
-                    {Array(12).fill(0).map((_, i) => <td key={i} className="p-2 text-center text-slate-400 font-medium">{i === 5 ? qData.alerts : "--"}</td>)}
-                    <td className="p-2 text-red-500 font-black text-right">{qData.alerts || 0}</td>
-                  </tr>
-                  <tr className="border-t border-slate-50">
-                    <td className="p-2 flex items-center gap-2 whitespace-nowrap"><div className="w-1.5 h-1.5 rounded-full bg-green-500"/> Success</td>
-                    {Array(12).fill(0).map((_, i) => <td key={i} className="p-2 text-center text-slate-400 font-medium">{i === 5 ? qData.success : "--"}</td>)}
-                    <td className="p-2 text-green-500 font-black text-right">{qData.success || 0}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </ChartWrapper>
-
-          <ChartWrapper title="Daily Action Trend">
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={dailyPerformance}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="day" fontSize={9} />
-                <YAxis fontSize={10} />
-                <Tooltip />
-                <Line type="monotone" dataKey="issue" stroke="#ef4444" strokeWidth={3} dot={false} />
-                <Line type="monotone" dataKey="action" stroke="#4f46e5" strokeWidth={3} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartWrapper>
-
-        </div>
-      </div>
     </div>
   );
 };
 
-const ChartWrapper = ({ title, children }) => (
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-    <div className="bg-slate-50/50 px-4 py-3 border-b border-slate-100 flex justify-between items-center">
-      <div className="flex items-center gap-2 text-slate-500 font-black uppercase text-[10px] tracking-widest">
+// Sub-components for cleaner code
+const StatBox = ({ val, label, color }) => (
+  <div className={`text-center p-2 bg-${color}-50 rounded-xl border border-${color}-100`}>
+    <div className={`text-lg font-black text-${color}-500`}>{val}</div>
+    <div className={`text-[8px] font-bold uppercase text-${color}-400`}>{label}</div>
+  </div>
+);
+
+const ChartCard = ({ title, children }) => (
+  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col min-h-0 overflow-hidden">
+    <div className="px-4 py-3 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0 z-10">
+      <div className="flex items-center gap-2 text-[#64748B] font-black uppercase text-[9px] sm:text-[10px] tracking-widest">
         <Star size={14} className="text-blue-500" /> {title}
       </div>
-      <Maximize2 size={12} className="text-slate-300 hover:text-slate-600 cursor-pointer" />
+      <Maximize2 size={12} className="text-slate-300 hidden sm:block" />
     </div>
-    <div className="p-4">{children}</div>
+    <div className="p-4 flex-1 min-h-0">{children}</div>
   </div>
 );
 
