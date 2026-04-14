@@ -447,7 +447,7 @@ const ChartCard = ({ title, children }) => (
   </div>
 );
 
-const TipItem = ({ icon, text }) => (
+const TipItem = ({ icon, text }) => ( 
   <div className="flex items-start gap-3">
     <div className="mt-0.5">{icon}</div>
     <p className="text-[10px] font-bold text-slate-500 leading-tight">{text}</p>
