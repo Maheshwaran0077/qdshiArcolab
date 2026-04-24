@@ -36,26 +36,13 @@ const UserSchema = new mongoose.Schema({
     default: 'user',
     lowercase: true
   },
- // models/User.js
-department: {
-  type: String,
-  uppercase: true, 
-  enum: [
-    'QUALITY (Q)',  // If you want to store the full name
-    'DELIVERY (D)', 
-    'SAFETY (S)', 
-    'HEALTH (H)', 
-    'IDEA (I)',
-    'Q', 'D', 'S', 'H', 'I', // Add these if you want to allow short codes
-    'ALL', 
-    'NONE'
-  ],
-  default: 'NONE'
-},
+  department: {
+    type: String,
+    default: 'NONE', // comma-separated dept keys e.g. "fgmw,pmw,rmw"
+  },
   shift: {
     type: String,
-    enum: ['1', '2', '3', 'NONE'],
-    default: 'NONE'
+    default: 'NONE', // comma-separated shifts e.g. "1,2,3"
   },
   dob: {
     type: Date

@@ -15,11 +15,15 @@ import ShiftPickerPage from './pages/ShiftPickerPage';
 import ArcolabLogo from './assest/arcolabLogo.jpg';
 
 export const DEPARTMENTS = [
-  { key: 'fg', name: 'Finished Good Material', short: 'FG', color: 'emerald', desc: 'Outbound logistics & storage' },
-  { key: 'pm', name: 'Packing Material', short: 'PM', color: 'blue', desc: 'Primary & secondary supplies' },
-  { key: 'rm', name: 'Raw Material', short: 'RM', color: 'violet', desc: 'Inbound stock management' },
-  { key: 'pp', name: 'Primary Packing', short: 'PP', color: 'orange', desc: 'Production lines & machine yield' },
-  { key: 'pop', name: 'Post Production', short: 'POP', color: 'rose', desc: 'Inspection, sorting & final checks' },
+  { key: 'fgmw', name: 'Finished Good Material Warehouse', short: 'FGMW', color: 'emerald', desc: 'Outbound logistics & storage' },
+  { key: 'pmw', name: 'Packing Material Warehouse', short: 'PMW', color: 'indigo', desc: 'Primary & secondary supplies' },
+  { key: 'rmw', name: 'Raw Material Warehouse', short: 'RMW', color: 'purple', desc: 'Inbound stock management' },
+  { key: 'ppp', name: 'Primary Packing Production', short: 'PPP', color: 'amber', desc: 'Production lines & machine yield' },
+  { key: 'pop', name: 'Post Production', short: 'POP', color: 'pink', desc: 'Inspection, sorting & final checks' },
+  { key: 'qcmad', name: 'QC & Microbiology & AD Lab', short: 'QCMAD', color: 'teal', desc: 'Quality control testing, microbiological analysis, and analytical development' },
+  { key: 'pro', name: 'Production', short: 'PRO', color: 'yellow', desc: 'Core manufacturing processes and production output monitoring' },
+  { key: 'spp', name: 'Secondary Packing Production', short: 'SPP', color: 'red', desc: 'Secondary packaging, labeling, and final product preparation' },
+  { key: 'fac', name: 'Facilities', short: 'FAC', color: 'cyan', desc: 'Maintenance of utilities, equipment, and plant infrastructure' },  
 ];
 
 export const MODULES = [
@@ -30,14 +34,28 @@ export const MODULES = [
 ];
 
 const DEPT_BG = {
-  emerald: 'from-emerald-500 to-emerald-700 shadow-emerald-200',
-  blue: 'from-blue-500 to-blue-700 shadow-blue-200',
-  violet: 'from-violet-500 to-violet-700 shadow-violet-200',
-  orange: 'from-orange-500 to-orange-700 shadow-orange-200', 
-  rose: 'from-rose-500 to-rose-700 shadow-rose-200',
+  emerald: 'from-emerald-500 to-emerald-700 shadow-emerald-200',  // FGMW
+  indigo: 'from-indigo-500 to-indigo-700 shadow-indigo-200',     // PMW
+  purple: 'from-purple-500 to-purple-700 shadow-purple-200',     // RMW
+  amber: 'from-amber-500 to-amber-700 shadow-amber-200',         // PPP
+  pink: 'from-pink-500 to-pink-700 shadow-pink-200',             // POP
+  teal: 'from-teal-500 to-teal-700 shadow-teal-200',             // QCMAD
+  yellow: 'from-yellow-400 to-yellow-600 shadow-yellow-200',     // PRO
+  red: 'from-red-500 to-red-700 shadow-red-200',                 // SPP
+  cyan: 'from-cyan-500 to-cyan-700 shadow-cyan-200',             // FAC
 };
 
-const VALID_DEPTS = ['fg', 'pm', 'rm','pp','pop'];
+const VALID_DEPTS = [
+  'fgmw',
+  'pmw',
+  'rmw',
+  'ppp',
+  'pop',
+  'qcmad',
+  'pro',
+  'spp',
+  'fac'
+];
 const VALID_MODULES = ['q', 'd', 's', 'h'];
 
 // ─────────────────────────────────────────────

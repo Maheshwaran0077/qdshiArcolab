@@ -55,7 +55,7 @@ const ShiftDataSchema = new mongoose.Schema({
 // 3. Main Metric Schema
 const MetricSchema = new mongoose.Schema({
   letter: { type: String, required: true }, // Q, D, S, H, I
-  dept: { type: String, enum: ['fg', 'pm', 'rm', 'pp'], default: 'fg' }, // Added 'pp'
+  dept: { type: String, default: 'unknown' }, // fgmw | pmw | rmw | ppp | pop | qcmad | pro | spp | fac
   label: String,
   
   // Shift-specific storage

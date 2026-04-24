@@ -2,44 +2,73 @@ const express = require('express');
 const router = express.Router();
 const Metric = require('../models/Metrics');
 
-// Professional Label Helper
-const getLabel = (letter, dept) => {
-  const deptMap = { 
-    fg: 'Finished Good', 
-    pm: 'Packing Material', 
-    rm: 'Raw Material', 
-    pp: 'Primary Packing' 
-  };
-  const dName = deptMap[dept] || 'General';
-  
-  const typeMap = { 
-    Q: 'Quality', 
-    D: dept === 'pp' ? 'Production' : 'Dispatch', 
-    S: 'Safety', 
-    H: 'Health', 
-    I: 'Innovation' 
-  };
-  return `${dName} ${typeMap[letter] || 'Metric'}`;
+
+// ✅ Central Department Config (Single Source of Truth)
+const DEPT_CONFIG = {
+  fgmw: 'Finished Goods Warehouse',
+  pmw: 'Packing Material Warehouse',
+  rmw: 'Raw Material Warehouse',
+  ppp: 'Primary Packing Production',
+  pop: 'Post Production',
+  qcmad: 'QC & Microbiology Lab',
+  pro: 'Production',
+  spp: 'Secondary Packing Production',
+  fac: 'Facilities',
+  unknown: 'Unassigned Department'
 };
 
-// GET Metrics (Filtered by Shift & Dept)
+
+// ✅ Metric Type Mapping (QDSHI)
+const TYPE_MAP = {
+  Q: 'Quality',
+  D: 'Delivery',
+  S: 'Safety',
+  H: 'Health',
+  I: 'Improvement'
+};
+
+
+// ✅ Smart Label Generator
+const getLabel = (letter, dept) => {
+  const deptName = DEPT_CONFIG[dept] || 'General';
+
+  // Special logic for production-type departments
+  const isProductionDept = ['ppp', 'pro', 'spp'].includes(dept);
+
+  const typeLabel =
+    letter === 'D'
+      ? (isProductionDept ? 'Production' : 'Dispatch')
+      : TYPE_MAP[letter] || 'Metric';
+
+  return `${deptName} ${typeLabel}`;
+};
+
+
+
+// ✅ GET Metrics (Filtered by Shift & Dept)
 router.get('/', async (req, res) => {
   try {
     const { shift, dept } = req.query;
-    const query = dept ? { dept } : {};
+
+    const query = {};
+    if (dept) query.dept = dept;
+
     const metrics = await Metric.find(query);
 
     if (!shift) return res.json(metrics);
 
     const shiftMetrics = metrics.map(m => {
       const shiftData = m.shifts?.[shift] || {};
+
       return {
         _id: m._id,
         letter: m.letter,
         dept: m.dept,
         label: m.label || getLabel(m.letter, m.dept),
+
         alerts: shiftData.alerts ?? 0,
         success: shiftData.success ?? 0,
+
         daysData: shiftData.daysData ?? [],
         issueLogs: shiftData.issueLogs ?? [],
         staffLogs: shiftData.staffLogs ?? [],
@@ -48,21 +77,38 @@ router.get('/', async (req, res) => {
     });
 
     res.json(shiftMetrics);
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST Update Metrics (Universal for all depts)
+
+
+// ✅ POST Update Metrics (Universal)
 router.post('/update', async (req, res) => {
-  const { letter, dept = 'fg', shift, daysData, alerts, success, issueLogs } = req.body;
+  const {
+    letter,
+    dept,
+    shift,
+    daysData,
+    alerts,
+    success,
+    issueLogs
+  } = req.body;
+
+  // 🔴 Strict Validation (important)
   if (!shift) return res.status(400).json({ error: "Shift is required" });
+  if (!dept || !DEPT_CONFIG[dept])
+    return res.status(400).json({ error: "Invalid department" });
 
   try {
     const updated = await Metric.findOneAndUpdate(
       { letter, dept },
-      { 
-        $setOnInsert: { label: getLabel(letter, dept) },
+      {
+        $setOnInsert: {
+          label: getLabel(letter, dept)
+        },
         $set: {
           [`shifts.${shift}.daysData`]: daysData ?? [],
           [`shifts.${shift}.alerts`]: alerts ?? 0,
@@ -73,51 +119,74 @@ router.post('/update', async (req, res) => {
       { upsert: true, new: true }
     );
 
-    const sd = updated.shifts[shift];
+    const sd = updated.shifts?.[shift] || {};
+
     res.json({
       _id: updated._id,
       letter: updated.letter,
       dept: updated.dept,
       label: updated.label,
-      ...sd.toObject() // Return current shift data
+      ...sd.toObject?.() || sd
     });
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST Staff Logs
+
+
+// ✅ POST Staff Logs
 router.post('/staff', async (req, res) => {
-  const { letter, dept = 'fg', shift, logs } = req.body;
-  if (!shift) return res.status(400).json({ error: 'shift is required' });
-  
+  const { letter, dept, shift, logs } = req.body;
+
+  if (!shift) return res.status(400).json({ error: 'Shift is required' });
+  if (!dept || !DEPT_CONFIG[dept])
+    return res.status(400).json({ error: 'Invalid department' });
+
   try {
     const updated = await Metric.findOneAndUpdate(
       { letter, dept },
-      { $set: { [`shifts.${shift}.staffLogs`]: logs ?? [] } },
+      {
+        $setOnInsert: { label: getLabel(letter, dept) },
+        $set: { [`shifts.${shift}.staffLogs`]: logs ?? [] }
+      },
       { upsert: true, new: true }
     );
-    res.json(updated.shifts[shift].staffLogs);
+
+    res.json(updated.shifts?.[shift]?.staffLogs || []);
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST Activity Logs
+
+
+// ✅ POST Activity Logs
 router.post('/activity', async (req, res) => {
-  const { letter, dept = 'fg', shift, logs } = req.body;
-  if (!shift) return res.status(400).json({ error: 'shift is required' });
-  
+  const { letter, dept, shift, logs } = req.body;
+
+  if (!shift) return res.status(400).json({ error: 'Shift is required' });
+  if (!dept || !DEPT_CONFIG[dept])
+    return res.status(400).json({ error: 'Invalid department' });
+
   try {
     const updated = await Metric.findOneAndUpdate(
       { letter, dept },
-      { $set: { [`shifts.${shift}.activityLogs`]: logs ?? [] } },
+      {
+        $setOnInsert: { label: getLabel(letter, dept) },
+        $set: { [`shifts.${shift}.activityLogs`]: logs ?? [] }
+      },
       { upsert: true, new: true }
     );
-    res.json(updated.shifts[shift].activityLogs);
+
+    res.json(updated.shifts?.[shift]?.activityLogs || []);
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 module.exports = router;

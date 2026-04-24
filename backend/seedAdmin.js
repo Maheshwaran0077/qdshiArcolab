@@ -9,7 +9,7 @@ const seedAdmin = async () => {
     console.log("Connected to MongoDB...");
 
     // Check if admin already exists to avoid duplicates
-    const existingAdmin = await User.findOne({ gmail: 'admin@gmail.com' });
+    const existingAdmin = await User.findOne({ gmail: 'Maheshadmin@gmail.com' });
     if (existingAdmin) {
       console.log('Admin already exists!');
       process.exit();
@@ -19,8 +19,8 @@ const seedAdmin = async () => {
     const admin = new User({
       name: 'Maheshwaran Admin', 
       employeeId: 'ADMIN-001',
-      gmail: 'admin@gmail.com',
-      password: 'admin123', // The User model's .pre('save') will hash this automatically
+      gmail: 'Maheshadmin@gmail.com',
+      password: 'SecurePassword123', // The User model's .pre('save') will hash this automatically
       role: 'superadmin',
       department: 'All'
     }); 
