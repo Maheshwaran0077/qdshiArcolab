@@ -3,22 +3,20 @@ const express = require('express');
 const router = express.Router();
 
 // 1. Add updateSupervisor to your imports
-const { 
-  loginUser, 
-  registerUser,  
+const {
+  loginUser,
+  registerUser,
   getSupervisors,
-  updateSupervisor
-} = require('../controller/userController'); 
- 
-// --- AUTH ROUTES ---
-router.post('/login', loginUser);
-router.post('/register', registerUser);
+  updateSupervisor,
+  getUsersByRole,
+  deleteUser,
+} = require('../controller/userController');
 
-// --- DATA ROUTES ---
-// Fetch supervisors for a specific department
+router.post('/login',            loginUser);
+router.post('/register',         registerUser);
 router.get('/supervisors/:dept', getSupervisors);
-
-// Update supervisor details (Name, Shift, or Password)
-router.put('/update/:id', updateSupervisor); 
+router.get('/all/:role',         getUsersByRole);
+router.put('/update/:id',        updateSupervisor);
+router.delete('/delete/:id',     deleteUser);
 
 module.exports = router;

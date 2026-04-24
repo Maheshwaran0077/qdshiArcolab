@@ -4,7 +4,6 @@ const mongoose = require('mongoose');
 const cors     = require('cors');
 const dns      = require('dns');
 
-// Set DNS to avoid lookup issues in certain environments
 dns.setServers(["1.1.1.1", "8.8.8.8"]);
 
 const metricRoutes   = require('./routes/metricRoutes');
@@ -17,25 +16,58 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Routes
 app.use('/api/metrics',  metricRoutes);
 app.use('/api/users',    userRoutes);
 app.use('/api/health',   healthRoutes);
 app.use('/api/ideation', ideationRoutes);
 
-// Global Error Handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ success: false, message: err.message });
-});
 
-// Helper for Migration Labels
-const getLabel = (letter, dept) => {
-  const deptMap = { fg: 'Finished Good', pm: 'Packing Material', rm: 'Raw Material' };
-  const dName = deptMap[dept] || 'General';
-  const typeMap = { Q: 'Quality', D: 'Dispatch', S: 'Safety', H: 'Health' };
-  return `${dName} ${typeMap[letter] || 'Metric'}`;
+// ✅ CENTRAL CONFIG (IMPORTANT — SAME AS FRONTEND)
+const DEPT_CONFIG = {
+  fgmw: 'Finished Goods Warehouse',
+  pmw: 'Packing Material Warehouse',
+  rmw: 'Raw Material Warehouse',
+  ppp: 'Primary Packing Production',
+  pop: 'Post Production',
+  qcmad: 'QC & Microbiology Lab',
+  pro: 'Production',
+  spp: 'Secondary Packing Production',
+  fac: 'Facilities'
 };
+
+const LETTERS = ['Q', 'D', 'S', 'H', 'I'];
+
+const TYPE_MAP = {
+  Q: 'Quality',
+  D: 'Delivery',
+  S: 'Safety',
+  H: 'Health',
+  I: 'Improvement'
+};
+
+
+// ✅ SMART LABEL
+const getLabel = (letter, dept) => {
+  const deptName = DEPT_CONFIG[dept] || 'General';
+  const isProduction = ['ppp', 'pro', 'spp'].includes(dept);
+
+  const type =
+    letter === 'D'
+      ? (isProduction ? 'Production' : 'Dispatch')
+      : TYPE_MAP[letter] || 'Metric';
+
+  return `${deptName} ${type}`;
+};
+
+
+// 🔄 OLD → NEW DEPT MIGRATION MAP
+const OLD_TO_NEW_DEPT = {
+  fg: 'fgmw',
+  pm: 'pmw',
+  rm: 'rmw',
+  pp: 'ppp'
+};
+
 
 mongoose.connect(process.env.MONGO_URI)
   .then(async () => {
@@ -44,66 +76,93 @@ mongoose.connect(process.env.MONGO_URI)
     const Metric = require('./models/Metrics');
     const Health = require('./models/Health');
 
-    // ── Migration 1: Drop old index ──────────────────────────────────────────
+
+    // ── 1. Drop old index ─────────────────────────────
     try {
       await Metric.collection.dropIndex('letter_1');
-      console.log('✅ [Metric] Dropped legacy letter_1 index');
-    } catch (_) { /* Index already gone */ }
+      console.log('✅ Dropped legacy index');
+    } catch (_) {}
 
-    // ── Migration 2: Backfill dept='fg' on legacy Metric docs ────────────────
-    try {
-      const r = await Metric.collection.updateMany(
-        { $or: [{ dept: { $exists: false } }, { dept: null }, { dept: '' }] },
-        { $set: { dept: 'fg' } }
+
+    // ── 2. MIGRATE OLD DEPT VALUES ────────────────────
+    for (const [oldDept, newDept] of Object.entries(OLD_TO_NEW_DEPT)) {
+      const res = await Metric.collection.updateMany(
+        { dept: oldDept },
+        { $set: { dept: newDept } }
       );
-      if (r.modifiedCount > 0)
-        console.log(`✅ [Metric] Backfilled dept='fg' on ${r.modifiedCount} docs`);
-    } catch (e) { console.error('⚠️ Metric dept backfill error:', e.message); }
 
-    // ── Migration 3: Pre-initialise (Letter × Dept) Stubs with Labels ────────
-    const LETTERS = ['Q', 'D', 'S', 'H'];
-    const DEPTS   = ['fg', 'pm', 'rm'];
+      if (res.modifiedCount > 0) {
+        console.log(`✅ Migrated ${res.modifiedCount} docs: ${oldDept} → ${newDept}`);
+      }
+    }
+
+
+    // ── 3. FIX EMPTY / NULL DEPTS ─────────────────────
+    await Metric.collection.updateMany(
+      { $or: [{ dept: { $exists: false } }, { dept: null }, { dept: '' }] },
+      { $set: { dept: 'fgmw' } }
+    );
+
+
+    // ── 4. UPDATE LABELS (IMPORTANT) ──────────────────
+    const allMetrics = await Metric.find();
+
+    for (const m of allMetrics) {
+      const newLabel = getLabel(m.letter, m.dept);
+
+      if (m.label !== newLabel) {
+        m.label = newLabel;
+        await m.save();
+      }
+    }
+
+    console.log('✅ Labels synced');
+
+
+    // ── 5. INITIALISE ALL (LETTER × DEPT) ─────────────
     let created = 0;
 
     for (const letter of LETTERS) {
-      for (const dept of DEPTS) {
-        try {
-          const result = await Metric.collection.updateOne(
-            { letter, dept },
-            { 
-              $setOnInsert: { 
-                letter, 
-                dept, 
-                label: getLabel(letter, dept),
-                shifts: { '1': {}, '2': {}, '3': {} } // Pre-structure shifts
-              } 
-            },
-            { upsert: true }
-          );
-          if (result.upsertedCount > 0) created++;
-        } catch (_) { /* Ignore compound-key conflicts */ }
+      for (const dept of Object.keys(DEPT_CONFIG)) {
+        const result = await Metric.collection.updateOne(
+          { letter, dept },
+          {
+            $setOnInsert: {
+              letter,
+              dept,
+              label: getLabel(letter, dept),
+              shifts: { '1': {}, '2': {}, '3': {} }
+            }
+          },
+          { upsert: true }
+        );
+
+        if (result.upsertedCount > 0) created++;
       }
     }
-    if (created > 0) console.log(`✅ [Metric] Initialised ${created} new dept stubs`);
 
-    // ── Migration 4: Backfill Health dept ────────────────────────────────────
-    try {
-      const h = await Health.collection.updateMany(
-        { $or: [{ dept: 'COMMON' }, { dept: { $exists: false } }, { dept: null }, { dept: '' }] },
-        { $set: { dept: 'fg' } }
-      );
-      if (h.modifiedCount > 0)
-        console.log(`✅ [Health] Backfilled dept='fg' on ${h.modifiedCount} docs`);
-    } catch (e) { console.error('⚠️ Health dept backfill error:', e.message); }
+    console.log(`✅ Initialised ${created} metric stubs`);
+
+
+    // ── 6. HEALTH COLLECTION MIGRATION ────────────────
+    await Health.collection.updateMany(
+      { $or: [{ dept: 'COMMON' }, { dept: { $exists: false } }] },
+      { $set: { dept: 'fgmw' } }
+    );
+
+    console.log('✅ Health migration done');
+
   })
-  .catch(err => console.error('❌ MongoDB connection error:', err.message));
+  .catch(err => console.error('❌ MongoDB error:', err.message));
+
 
 // Graceful Shutdown
 process.on('SIGINT', async () => {
   await mongoose.connection.close();
-  console.log('🛑 MongoDB connection closed via app termination');
+  console.log('🛑 MongoDB connection closed');
   process.exit(0);
 });
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

@@ -59,4 +59,24 @@ const updateSupervisor = async (req, res) => {
   }
 };
 
-module.exports = { loginUser, registerUser, getSupervisors, updateSupervisor };
+const deleteUser = async (req, res) => {
+  try {
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.status(200).json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getUsersByRole = async (req, res) => {
+  try {
+    const { role } = req.params;
+    const users = await User.find({ role }).sort({ createdAt: -1 });
+    res.status(200).json(users);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch users', error: error.message });
+  }
+};
+
+module.exports = { loginUser, registerUser, getSupervisors, updateSupervisor, getUsersByRole, deleteUser };
