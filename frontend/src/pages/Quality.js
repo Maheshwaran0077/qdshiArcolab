@@ -50,6 +50,7 @@ const QualityPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState("Target Met");
   const [deviationType, setDeviationType] = useState("");
+  const [customReason, setCustomReason] = useState("");
   const [viewDate, setViewDate] = useState(new Date());
   const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -100,13 +101,14 @@ const QualityPage = () => {
 
   const handleUpdateStatus = async () => {
     if (!canUpdate) return;
+    const resolvedReason = selectedIssue === "Others" ? (customReason.trim() || "Others") : selectedIssue;
     let updatedLogs = Array.isArray(qData.issueLogs) ? [...qData.issueLogs] : [];
     const [y, m, d] = customDate.split('-');
     const newEntry = {
       date: `${d}/${m}/${y}`,
       rawDate: customDate,
-      reason: selectedIssue,
-      deviationType: selectedIssue === "Target Met" ? "" : deviationType,
+      reason: resolvedReason,
+      deviationType: resolvedReason === "Target Met" ? "" : deviationType,
       timestamp: new Date().toISOString()
     };
 
@@ -124,6 +126,7 @@ const QualityPage = () => {
         setMetrics(prev => prev.map(m => m.letter === 'Q' ? { ...m, ...saved } : m));
         setIsModalOpen(false);
         setDeviationType("");
+        setCustomReason("");
         notifySuccess(`Shift ${shift} Updated`);
       }
     } catch (e) { notifyError("Sync failed"); }
@@ -478,7 +481,7 @@ const QualityPage = () => {
               <h2 className="font-black uppercase tracking-widest text-[10px] flex items-center gap-2 text-slate-800">
                 <Edit3 size={16} className="text-emerald-500" /> LOG RECORD
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-300 hover:text-red-500"><X size={20} /></button>
+              <button onClick={() => { setIsModalOpen(false); setCustomReason(""); }} className="text-slate-300 hover:text-red-500"><X size={20} /></button>
             </div>
             <div className="space-y-4">
               <div>
@@ -487,14 +490,27 @@ const QualityPage = () => {
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 ml-1">Reason</label>
-                <select value={selectedIssue} onChange={(e) => setSelectedIssue(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 text-sm outline-none focus:ring-2 ring-emerald-500">
+                <select value={selectedIssue} onChange={(e) => { setSelectedIssue(e.target.value); setCustomReason(""); }} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 text-sm outline-none focus:ring-2 ring-emerald-500">
                   <option value="Target Met">✅ Target Met</option>
                   <option value="Machine Breakdown">⚠️ Machine Breakdown</option>
                   <option value="No Power">⚠️ No Power</option>
                   <option value="No Manpower">⚠️ No Manpower</option>
                   <option value="Quality Reject">⚠️ Quality Reject</option>
+                  <option value="Others">✏️ Others</option>
                 </select>
               </div>
+              {selectedIssue === "Others" && (
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 ml-1">Specify Reason</label>
+                  <input
+                    type="text"
+                    value={customReason}
+                    onChange={(e) => setCustomReason(e.target.value)}
+                    placeholder="Enter custom reason..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 text-sm outline-none focus:ring-2 ring-emerald-500"
+                  />
+                </div>
+              )}
               {selectedIssue !== "Target Met" && (
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 ml-1">Deviation Type</label>

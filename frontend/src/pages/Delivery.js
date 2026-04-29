@@ -10,69 +10,88 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const DEPT_FULL = { fg: 'Finished Good Warehouse', pm: 'Packing Material Warehouse', rm: 'Raw Material Warehouse', qcmad: 'QC & Microbiology & AD Lab', pro: 'Production', pop: 'Post Production', ppp: 'Primary Packing Production', spp: 'Secondary Packing Production', fac: 'Facilities' };
 
 // Department-specific Delivery metric labels per GMP document
+// delay*Type: 'time' = red if >0, unit=min | 'zero' = red if >0, unit=count/batches | 'pct' = red if <100, unit=%
 const DEPT_DELIVERY_LABELS = {
   fg: {
     planVsActual: 'Plan vs Actual Disposed',
     archiveTitle: 'Disposal Archives',
     targetLabel: 'Target Disposed', actualLabel: 'Actual Disposed',
     delay1Col: 'BPR Receipts', delay1Ph: 'Delayed BPR Receipts (min)',
+    delay1Unit: 'min', delay1Type: 'time',
     delay2Col: 'Shipments', delay2Ph: 'Delayed Shipments / Logistics (min)',
+    delay2Unit: 'min', delay2Type: 'time',
   },
   pm: {
     planVsActual: 'Plan vs Actual Dispensed',
     archiveTitle: 'Dispatch Archives',
     targetLabel: 'Target Dispensed', actualLabel: 'Actual Dispensed',
     delay1Col: 'PBR/Indent', delay1Ph: 'Delayed PBR / Indent (min)',
+    delay1Unit: 'min', delay1Type: 'time',
     delay2Col: 'PM QC Approval', delay2Ph: 'Delayed PM QC Approval (min)',
+    delay2Unit: 'min', delay2Type: 'time',
   },
   rm: {
     planVsActual: 'Plan vs Actual Dispensed',
     archiveTitle: 'Dispatch Archives',
     targetLabel: 'Target Dispensed', actualLabel: 'Actual Dispensed',
     delay1Col: 'BMR/Indent', delay1Ph: 'Delayed BMR / Indent (min)',
+    delay1Unit: 'min', delay1Type: 'time',
     delay2Col: 'RM QC Approval', delay2Ph: 'Delayed RM QC Approval (min)',
+    delay2Unit: 'min', delay2Type: 'time',
   },
   qcmad: {
     planVsActual: 'Plan vs Actual Tasks',
     archiveTitle: 'Task Archives',
     targetLabel: 'Tasks Planned', actualLabel: 'Tasks Executed',
     delay1Col: 'Sample Testing', delay1Ph: 'Delayed Sample Testing (min)',
+    delay1Unit: 'min', delay1Type: 'time',
     delay2Col: 'Repeated Testing', delay2Ph: 'No. of Invalid / Repeated Testing',
+    delay2Unit: '', delay2Type: 'zero',
   },
   pro: {
     planVsActual: 'Plan vs Actual Manufactured',
     archiveTitle: 'Production Archives',
     targetLabel: 'Target Output', actualLabel: 'Actual Output',
     delay1Col: 'RM Shortage', delay1Ph: 'Raw Material Shortage Impact (batches)',
+    delay1Unit: '', delay1Type: 'zero',
     delay2Col: 'Changeover', delay2Ph: 'Non-Serial Changeover Time (min)',
+    delay2Unit: 'min', delay2Type: 'time',
   },
   pop: {
     planVsActual: 'Plan vs Actual Manufactured',
     archiveTitle: 'Production Archives',
     targetLabel: 'Target Output', actualLabel: 'Actual Output',
     delay1Col: 'RM Shortage', delay1Ph: 'Raw Material Shortage Impact (batches)',
+    delay1Unit: '', delay1Type: 'zero',
     delay2Col: 'Changeover', delay2Ph: 'Non-Serial Changeover Time (min)',
+    delay2Unit: 'min', delay2Type: 'time',
   },
   ppp: {
     planVsActual: 'Plan vs Actual Packed',
     archiveTitle: 'Packing Archives',
     targetLabel: 'Target Packed', actualLabel: 'Actual Packed',
     delay1Col: 'RM Shortage', delay1Ph: 'Raw Material Shortage Impact (batches)',
+    delay1Unit: '', delay1Type: 'zero',
     delay2Col: 'Changeover', delay2Ph: 'Non-Serial Changeover Time (min)',
+    delay2Unit: 'min', delay2Type: 'time',
   },
   spp: {
     planVsActual: 'Plan vs Actual Packed',
     archiveTitle: 'Packing Archives',
     targetLabel: 'Target Packed', actualLabel: 'Actual Packed',
     delay1Col: 'Label Errors', delay1Ph: 'No. of Labeling / Serialization Errors',
+    delay1Unit: '', delay1Type: 'zero',
     delay2Col: 'Pkg Shortage', delay2Ph: 'No. of Carton / Packaging Material Shortage (batches)',
+    delay2Unit: '', delay2Type: 'zero',
   },
   fac: {
     planVsActual: 'Plan vs Actual Tasks',
     archiveTitle: 'Task Archives',
     targetLabel: 'Tasks Planned', actualLabel: 'Tasks Completed',
     delay1Col: 'Housekeeping', delay1Ph: 'GMP & Non-GMP Housekeeping Compliance (%)',
+    delay1Unit: '%', delay1Type: 'pct',
     delay2Col: 'Waste Removal', delay2Ph: 'Timeliness of Waste Removal (%)',
+    delay2Unit: '%', delay2Type: 'pct',
   },
 };
 
@@ -362,7 +381,7 @@ const DeliveryPage = () => {
             <div className="px-8 py-3 bg-slate-50 grid grid-cols-4 text-[9px] font-black text-slate-400 uppercase border-b border-slate-100">
               <span>Timeline</span><span className="text-center">{deptLabels.targetLabel}</span><span className="text-center">{deptLabels.actualLabel}</span><span className="text-right">Action</span>
             </div>
-            <InfiniteScrollList data={allYearLogs} type="dispatch" setDeleteConfig={setDeleteConfig} />
+            <InfiniteScrollList data={allYearLogs} type="dispatch" setDeleteConfig={setDeleteConfig} deptLabels={deptLabels} />
           </div>
 
           <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden h-[300px] flex flex-col">
@@ -370,7 +389,7 @@ const DeliveryPage = () => {
             <div className="px-8 py-3 bg-slate-50 grid grid-cols-5 text-[9px] font-black text-slate-400 uppercase border-b border-slate-100">
               <span>Date</span><span className="text-center">M/C</span><span className="text-center">{deptLabels.delay1Col}</span><span className="text-center">{deptLabels.delay2Col}</span><span className="text-right">Action</span>
             </div>
-            <InfiniteScrollList data={allYearLogs} type="minor" setDeleteConfig={setDeleteConfig} />
+            <InfiniteScrollList data={allYearLogs} type="minor" setDeleteConfig={setDeleteConfig} deptLabels={deptLabels} />
           </div>
         </div>
 
@@ -440,21 +459,30 @@ const DeliveryPage = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-[400px] p-8 shadow-2xl">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-[420px] p-8 shadow-2xl">
             <h2 className="font-black text-slate-800 uppercase text-center text-sm mb-2">Update Delivery Log</h2>
-            <p className="text-[9px] font-bold text-emerald-500 uppercase text-center mb-8 tracking-widest">{deptLabels.planVsActual}</p>
-            <div className="space-y-4">
+            <p className="text-[9px] font-bold text-emerald-500 uppercase text-center mb-6 tracking-widest">{DEPT_FULL[activeDept]} · Shift {activeShift}</p>
+            <div className="space-y-3">
               <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold outline-none" />
-              <div className="grid grid-cols-2 gap-4">
-                <input type="number" placeholder={deptLabels.targetLabel} value={plannedCount} onChange={e => setPlannedCount(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold" />
-                <input type="number" placeholder={deptLabels.actualLabel} value={dispatchedCount} onChange={e => setDispatchedCount(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold" />
+
+              {/* Performance Metrics */}
+              <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest pt-1 border-t border-slate-100">Performance Metrics</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase -mt-1">{deptLabels.planVsActual} — Green: ≥90% · Red: &lt;90%</p>
+              <div className="grid grid-cols-2 gap-3">
+                <input type="number" placeholder={deptLabels.targetLabel} value={plannedCount} onChange={e => setPlannedCount(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold text-[12px]" />
+                <input type="number" placeholder={deptLabels.actualLabel} value={dispatchedCount} onChange={e => setDispatchedCount(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold text-[12px]" />
               </div>
+
+              {/* Problem-Solving Metrics */}
+              <p className="text-[9px] font-black text-orange-500 uppercase tracking-widest pt-1 border-t border-slate-100">Problem-Solving Metrics</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase -mt-1">Equipment Breakdown — Green: 0 · Red: &gt;0</p>
               <input type="number" placeholder="No. of Equipment Breakdown" value={breakdowns} onChange={e => setBreakdowns(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold" />
-              <div className="grid grid-cols-2 gap-4">
-                <input type="number" placeholder={deptLabels.delay1Ph} value={pbrDelay} onChange={e => setPbrDelay(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold text-[11px]" />
-                <input type="number" placeholder={deptLabels.delay2Ph} value={qcDelay} onChange={e => setQcDelay(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold text-[11px]" />
+              <div className="grid grid-cols-2 gap-3">
+                <input type="number" placeholder={deptLabels.delay1Ph} value={pbrDelay} onChange={e => setPbrDelay(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold text-[10px]" />
+                <input type="number" placeholder={deptLabels.delay2Ph} value={qcDelay} onChange={e => setQcDelay(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold text-[10px]" />
               </div>
-              <button onClick={handleUpdateStatus} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black uppercase">Commit to Database</button>
+
+              <button onClick={handleUpdateStatus} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black uppercase mt-2">Commit to Database</button>
               <button onClick={() => setIsModalOpen(false)} className="w-full text-[10px] font-bold text-slate-400 uppercase">Close</button>
             </div>
           </div>
@@ -494,29 +522,60 @@ const TableContent = ({ data, type, onEdit, readonly, setDeleteConfig }) => {
   );
 };
 
-const InfiniteScrollList = ({ data, type, setDeleteConfig }) => (
+const minorColor = (value, type) => {
+  const n = Number(value);
+  if (type === 'pct') return n >= 100 ? 'text-emerald-600' : 'text-rose-500';
+  return n === 0 ? 'text-emerald-600' : 'text-rose-500';
+};
+
+const minorFmt = (value, unit) => {
+  const n = Number(value);
+  if (value === '' || value === null || value === undefined) return '-';
+  if (unit === 'min') return `${n}m`;
+  if (unit === '%') return `${n}%`;
+  return `${n}`;
+};
+
+const InfiniteScrollList = ({ data, type, setDeleteConfig, deptLabels }) => (
   <div className="flex-1 overflow-y-auto no-scrollbar px-8">
     {data.map(({ monthName, logs }) => logs.length > 0 && (
       <div key={monthName} className="mb-6">
         <div className="sticky top-0 bg-white/90 py-3 text-[9px] font-black text-emerald-600 uppercase border-b border-slate-50 z-10">{monthName}</div>
-        {logs.map((log, i) => (
-          <div key={i} className={`grid ${type === 'dispatch' ? 'grid-cols-4' : 'grid-cols-5'} py-4 text-[11px] border-b border-slate-50 items-center group`}>
-            <span className="font-bold text-slate-400">{log.date.split('/')[0]}/{log.date.split('/')[1]}</span>
-            {type === 'dispatch' ? (
-              <><span className="text-center text-slate-500">{log.planned}</span><span className="text-center font-black">{log.dispatched}</span></>
-            ) : (
-              <><span className="text-center font-black text-rose-500">{log.breakdowns || '-'}</span><span className="text-center">{log.pbrDelay}m</span><span className="text-center">{log.qcDelay}m</span></>
-            )}
-            <div className="text-right">
-              <button 
-                onClick={() => setDeleteConfig({ isOpen: true, type: type, index: i, rawDate: log.rawDate })} 
-                className="opacity-0 group-hover:opacity-100 p-1 text-rose-400 hover:bg-rose-50 rounded transition-all"
-              >
-                <Trash2 size={12}/>
-              </button>
+        {logs.map((log, i) => {
+          const efficiency = log.planned > 0 ? (log.dispatched / log.planned) * 100 : 0;
+          const dispatchOk = efficiency >= 90;
+          return (
+            <div key={i} className={`grid ${type === 'dispatch' ? 'grid-cols-4' : 'grid-cols-5'} py-4 text-[11px] border-b border-slate-50 items-center group`}>
+              <span className="font-bold text-slate-400">{log.date.split('/')[0]}/{log.date.split('/')[1]}</span>
+              {type === 'dispatch' ? (
+                <>
+                  <span className="text-center text-slate-400 font-bold">{log.planned}</span>
+                  <span className={`text-center font-black ${dispatchOk ? 'text-emerald-600' : 'text-rose-500'}`}>{log.dispatched}</span>
+                </>
+              ) : (
+                <>
+                  <span className={`text-center font-black ${Number(log.breakdowns) === 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                    {log.breakdowns ?? '-'}
+                  </span>
+                  <span className={`text-center font-bold ${minorColor(log.pbrDelay, deptLabels?.delay1Type)}`}>
+                    {minorFmt(log.pbrDelay, deptLabels?.delay1Unit)}
+                  </span>
+                  <span className={`text-center font-bold ${minorColor(log.qcDelay, deptLabels?.delay2Type)}`}>
+                    {minorFmt(log.qcDelay, deptLabels?.delay2Unit)}
+                  </span>
+                </>
+              )}
+              <div className="text-right">
+                <button
+                  onClick={() => setDeleteConfig({ isOpen: true, type: type, index: i, rawDate: log.rawDate })}
+                  className="opacity-0 group-hover:opacity-100 p-1 text-rose-400 hover:bg-rose-50 rounded transition-all"
+                >
+                  <Trash2 size={12}/>
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     ))}
   </div>

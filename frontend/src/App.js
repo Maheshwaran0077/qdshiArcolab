@@ -12,6 +12,9 @@ import Idea from './pages/Idea';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import HodDashboard from './pages/HodDashboard';
 import ShiftPickerPage from './pages/ShiftPickerPage';
+import EHS from './pages/EHS';
+import Engineering from './pages/Engineering';
+import HR from './pages/HR';
 import ArcolabLogo from './assest/arcolabLogo.jpg';
 
 export const DEPARTMENTS = [
@@ -43,7 +46,16 @@ const DEPT_BG = {
   yellow: 'from-yellow-400 to-yellow-600 shadow-yellow-200',     // PRO
   red: 'from-red-500 to-red-700 shadow-red-200',                 // SPP
   cyan: 'from-cyan-500 to-cyan-700 shadow-cyan-200',             // FAC
+  lime: 'from-lime-500 to-lime-700 shadow-lime-200',             // EHS
+  sky: 'from-sky-500 to-sky-700 shadow-sky-200',                 // Engineering
+  orange: 'from-orange-500 to-orange-700 shadow-orange-200',     // HR
 };
+
+const SPECIAL_DEPARTMENTS = [
+  { key: 'ehs',         name: 'Environment, Health & Safety',    short: 'EHS', color: 'lime',   desc: 'Safety compliance, incidents & environmental monitoring', path: '/ehs' },
+  { key: 'engineering', name: 'Engineering & Works Management',  short: 'ENG', color: 'sky',    desc: 'Maintenance, utilities & equipment performance',           path: '/engineering' },
+  { key: 'hr',          name: 'Human Resources',                 short: 'HR',  color: 'orange', desc: 'Workforce training, hiring & compliance tracking',          path: '/hr' },
+];
 
 const VALID_DEPTS = [
   'fgmw',
@@ -132,6 +144,43 @@ const Dashboard = () => {
               </div>
               <div className="mt-8 flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase tracking-widest bg-black/10 px-2 py-1 rounded">Explore</span>
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center group-hover:bg-white group-hover:text-slate-900 transition-colors">
+                  →
+                </div>
+              </div>
+            </div>
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-700" />
+          </motion.div>
+        ))}
+
+        {/* Separator */}
+        <div className="col-span-full flex items-center gap-4 mt-2">
+          <div className="flex-1 border-t border-slate-200" />
+          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Additional Departments</span>
+          <div className="flex-1 border-t border-slate-200" />
+        </div>
+
+        {/* EHS / Engineering / HR Cards */}
+        {SPECIAL_DEPARTMENTS.map((dept, i) => (
+          <motion.div
+            key={dept.key}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: (DEPARTMENTS.length + i) * 0.05 }}
+            whileHover={{ y: -5 }}
+            onClick={() => navigate(dept.path)}
+            className={`cursor-pointer bg-gradient-to-br ${DEPT_BG[dept.color]} rounded-3xl p-7 text-white shadow-xl hover:shadow-2xl transition-all group relative overflow-hidden`}
+          >
+            <div className="flex flex-col h-full justify-between relative z-10">
+              <div>
+                <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500">
+                  <span className="text-sm font-black">{dept.short}</span>
+                </div>
+                <h2 className="text-xl font-black leading-tight uppercase">{dept.name}</h2>
+                <p className="text-white/70 text-xs mt-2 font-medium">{dept.desc}</p>
+              </div>
+              <div className="mt-8 flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest bg-black/10 px-2 py-1 rounded">Open</span>
                 <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center group-hover:bg-white group-hover:text-slate-900 transition-colors">
                   →
                 </div>
@@ -280,6 +329,9 @@ function App() {
           <Route path="/admin" element={user?.role === 'superadmin' ? <SuperAdminDashboard /> : <Navigate to="/" />} />
           <Route path="/hod-dashboard" element={user?.role === 'hod' ? <HodDashboard /> : <Navigate to="/" />} />
           <Route path="/i" element={user ? <Idea /> : <Navigate to="/login" />} />
+          <Route path="/ehs" element={user ? <EHS /> : <Navigate to="/login" />} />
+          <Route path="/engineering" element={user ? <Engineering /> : <Navigate to="/login" />} />
+          <Route path="/hr" element={user ? <HR /> : <Navigate to="/login" />} />
           <Route path="/:dept" element={<DeptRoute user={user} />} />
           <Route path="/:dept/:module" element={<ShiftPickerRoute user={user} />} />
           <Route path="/shift/:shift/:dept/:module" element={<ModuleRoute user={user} />} />

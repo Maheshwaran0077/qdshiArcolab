@@ -6,20 +6,26 @@ const dns      = require('dns');
 
 dns.setServers(["1.1.1.1", "8.8.8.8"]);
 
-const metricRoutes   = require('./routes/metricRoutes');
-const userRoutes     = require('./routes/userRoutes');
-const healthRoutes   = require('./routes/healthRoutes');
-const ideationRoutes = require('./routes/IdeationRoutes');
+const metricRoutes      = require('./routes/metricRoutes');
+const userRoutes        = require('./routes/userRoutes');
+const healthRoutes      = require('./routes/healthRoutes');
+const ideationRoutes    = require('./routes/IdeationRoutes');
+const ehsRoutes         = require('./routes/ehsRoutes');
+const engineeringRoutes = require('./routes/engineeringRoutes');
+const hrRoutes          = require('./routes/hrRoutes');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-app.use('/api/metrics',  metricRoutes);
-app.use('/api/users',    userRoutes);
-app.use('/api/health',   healthRoutes);
-app.use('/api/ideation', ideationRoutes);
+app.use('/api/metrics',      metricRoutes);
+app.use('/api/users',        userRoutes);
+app.use('/api/health',       healthRoutes);
+app.use('/api/ideation',     ideationRoutes);
+app.use('/api/ehs',          ehsRoutes);
+app.use('/api/engineering',  engineeringRoutes);
+app.use('/api/hr',           hrRoutes);
 
 
 // ✅ CENTRAL CONFIG (IMPORTANT — SAME AS FRONTEND)
