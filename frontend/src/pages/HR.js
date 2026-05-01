@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Download } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -78,6 +80,7 @@ const downloadCSV = (entries, shift, date) => {
 
 export default function HR() {
   const navigate  = useNavigate();
+  const reportRef = useRef(null);
   const user      = JSON.parse(localStorage.getItem('userInfo') || 'null');
   const isSupervisor = user?.role === 'supervisor';
   const today     = new Date().toISOString().split('T')[0];
@@ -89,6 +92,14 @@ export default function HR() {
   const [empName, setEmpName] = useState('');
   const [saving,  setSaving]  = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [timeLock, setTimeLock] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API}/api/timelock/hr/${shift}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setTimeLock(d))
+      .catch(() => {});
+  }, [shift]);
 
   const load = useCallback(async () => {
     try {
@@ -109,7 +120,16 @@ export default function HR() {
   useEffect(() => { load(); }, [load]);
 
   const change = (i, field, value) =>
-    setEntries(prev => { const n = [...prev]; n[i] = { ...n[i], [field]: value }; return n; });
+    setEntries(prev => {
+      const n = [...prev];
+      n[i] = { ...n[i], [field]: value };
+      if (field === 'plan' || field === 'actual') {
+        const plan = Number(field === 'plan' ? value : n[i].plan);
+        const actual = Number(field === 'actual' ? value : n[i].actual);
+        n[i].percentage = (plan > 0 && !isNaN(actual)) ? Math.round((actual / plan) * 100) + '%' : '';
+      }
+      return n;
+    });
 
   const save = async () => {
     if (!empId.trim() || !empName.trim()) {
@@ -132,6 +152,16 @@ export default function HR() {
     }
     setSaving(false);
     setTimeout(() => setSaveMsg(''), 4000);
+  };
+
+  const downloadPDF = async () => {
+    if (!reportRef.current) return;
+    const canvas = await html2canvas(reportRef.current, { scale: 1.5, useCORS: true, backgroundColor: '#F8FAFC' });
+    const img = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('l', 'mm', 'a4');
+    const pw = pdf.internal.pageSize.getWidth();
+    pdf.addImage(img, 'PNG', 0, 0, pw, (canvas.height * pw) / canvas.width);
+    pdf.save(`HR_Shift${shift}_${date}.pdf`);
   };
 
   const SaveBtn = ({ cls = '' }) => (
@@ -158,7 +188,7 @@ export default function HR() {
         </motion.div>
       </div>
 
-      <div className="max-w-screen-xl mx-auto px-4 -mt-16 relative z-20 pb-12">
+      <div ref={reportRef} className="max-w-screen-xl mx-auto px-4 -mt-16 relative z-20 pb-12">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
           className="bg-white rounded-3xl shadow-xl p-5 mb-6">
           <div className="flex flex-wrap gap-3 items-center">
@@ -170,6 +200,11 @@ export default function HR() {
                 </button>
               ))}
             </div>
+            {timeLock?.enabled && (
+              <span className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] font-bold text-amber-700">
+                ⏰ Save window: {timeLock.startTime} – {timeLock.endTime}
+              </span>
+            )}
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
               readOnly={isSupervisor} disabled={isSupervisor}
               max={isSupervisor ? today : undefined}
@@ -184,6 +219,10 @@ export default function HR() {
               <span className={`text-sm font-semibold ${saveMsg.includes('success') ? 'text-green-600' : 'text-red-600'}`}>{saveMsg}</span>
             )}
             <div className="ml-auto flex gap-2">
+              <button onClick={downloadPDF}
+                className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-all">
+                <Download size={15} /> PDF
+              </button>
               <button onClick={() => downloadCSV(entries, shift, date)}
                 className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-all">
                 <Download size={15} /> CSV
@@ -228,6 +267,9 @@ export default function HR() {
                               <option value="Amber">⚠️ Amber</option>
                               <option value="Red">🔴 Red</option>
                             </select>
+                          ) : col.key === 'percentage' ? (
+                            <input type="text" value={entries[i][col.key] || ''} readOnly
+                              className="w-full rounded-lg px-2 py-1.5 text-xs border border-slate-200 bg-slate-50 cursor-not-allowed" />
                           ) : (
                             <input type="text" value={entries[i][col.key] || ''} onChange={e => change(i, col.key, e.target.value)}
                               placeholder="-"
@@ -240,6 +282,12 @@ export default function HR() {
                 })}
               </tbody>
             </table>
+          </div>
+          <div className="px-6 py-3 border-t border-slate-100 flex flex-wrap gap-6 items-center bg-slate-50/60">
+            <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest">Status Key:</span>
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-green-700"><span className="w-3 h-3 rounded-full bg-green-500 inline-block"></span>Green — On Track</span>
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-700"><span className="w-3 h-3 rounded-full bg-amber-400 inline-block"></span>Amber — Needs Attention</span>
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-red-700"><span className="w-3 h-3 rounded-full bg-red-500 inline-block"></span>Red — Critical / Delayed</span>
           </div>
           <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
             <SaveBtn />

@@ -17,6 +17,7 @@ import { dashboardMetrics as initialData } from '../dashboardData';
 
 const MySwal = withReactContent(Swal);
 const API_BASE_URL = 'http://localhost:5000/api/metrics';
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const DEPT_FULL = { fg: 'Finished Good Material Warehouse', pm: 'Packing Material Warehouse', rm: 'Raw Material Warehouse' };
 
 const Toast = Swal.mixin({
@@ -41,9 +42,7 @@ const QualityPage = () => {
 
   const isSuperAdmin = user?.role === 'superadmin';
   const isSupervisor = user?.role === 'supervisor';
-  const userDept = user?.department?.toUpperCase() || "";
-  const isQualitySupervisor = isSupervisor && (userDept.includes('QUALITY') || userDept === 'Q');
-  const canUpdate = isQualitySupervisor || isSuperAdmin;
+  const canUpdate = isSupervisor || isSuperAdmin;
 
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(initialData);
@@ -57,6 +56,14 @@ const QualityPage = () => {
   const [staffLogs, setStaffLogs] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
   const [tableSyncing, setTableSyncing] = useState({ staff: false, activity: false });
+  const [timeLock, setTimeLock] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API}/api/timelock/${dept || 'fg'}/${shift || '1'}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setTimeLock(d))
+      .catch(() => {});
+  }, [shift, dept]);
 
   const viewMonthName = viewDate.toLocaleString('default', { month: 'long' }).toUpperCase();
   const viewYear = viewDate.getFullYear();
@@ -315,6 +322,11 @@ const QualityPage = () => {
           <ChevronLeft size={20} /> BACK
         </button>
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          {timeLock?.enabled && (
+            <span className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-full text-[10px] font-bold text-amber-700">
+              ⏰ Save window: {timeLock.startTime} – {timeLock.endTime}
+            </span>
+          )}
           <button onClick={downloadCSV}
             className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-full font-bold text-xs shadow-sm transition-all">
             <Download size={14}/> CSV

@@ -11,6 +11,7 @@ import CircularTracker from '../components/CircularTracker';
 import { dashboardMetrics as initialData } from '../dashboardData';
 
 const API_BASE_URL = 'http://localhost:5000/api/metrics';
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const DEPT_FULL = { fg: 'Finished Good Material Warehouse', pm: 'Packing Material Warehouse', rm: 'Raw Material Warehouse' };
 
@@ -21,9 +22,7 @@ const SafetyPage = () => {
   const user = JSON.parse(localStorage.getItem('userInfo'));
   const isSuperAdmin = user?.role === 'superadmin';
   const isSupervisor = user?.role === 'supervisor';
-  const userDept = user?.department?.toUpperCase() || "";
-  const isSafetySupervisor = isSupervisor && (userDept.includes('SAFETY') || userDept === 'S');
-  const canUpdate = isSafetySupervisor || isSuperAdmin;
+  const canUpdate = isSupervisor || isSuperAdmin;
 
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(initialData);
@@ -37,9 +36,17 @@ const SafetyPage = () => {
   const [peopleAffected, setPeopleAffected] = useState(0);
   const [severity, setSeverity] = useState("Low");
 
+  const [timeLock, setTimeLock] = useState(null);
   const [viewDate, setViewDate] = useState(new Date());
   const viewMonthName = viewDate.toLocaleString('default', { month: 'long' }).toUpperCase();
   const viewYear = viewDate.getFullYear();
+
+  useEffect(() => {
+    fetch(`${API}/api/timelock/${dept || 'fg'}/${shift || '1'}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setTimeLock(d))
+      .catch(() => {});
+  }, [shift, dept]);
 
   const handleMonthChange = (offset) => {
     const newDate = new Date(viewDate);
@@ -177,6 +184,11 @@ const SafetyPage = () => {
           <ChevronLeft size={20} /> BACK
         </button>
         <div className="flex gap-2 items-center">
+          {timeLock?.enabled && (
+            <span className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] font-bold text-amber-700">
+              ⏰ Save window: {timeLock.startTime} – {timeLock.endTime}
+            </span>
+          )}
           <button
             onClick={() => {
               const headers = ['Date', 'Safety Incidents', 'Near Miss', 'Unsafe Acts', 'People Affected', 'Severity'];

@@ -6,6 +6,7 @@ import CircularTracker from '../components/CircularTracker';
 import { dashboardMetrics as initialData } from '../dashboardData';
 
 const API_BASE = 'http://localhost:5000/api/metrics';
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DEPT_FULL = { fg: 'Finished Good Warehouse', pm: 'Packing Material Warehouse', rm: 'Raw Material Warehouse', qcmad: 'QC & Microbiology & AD Lab', pro: 'Production', pop: 'Post Production', ppp: 'Primary Packing Production', spp: 'Secondary Packing Production', fac: 'Facilities' };
 
@@ -104,13 +105,17 @@ const DeliveryPage = () => {
   const navigate = useNavigate();
   const { shift: paramShift, dept: paramDept } = useRParams();
   const user = JSON.parse(localStorage.getItem('userInfo') || 'null');
-  
+  const isEmployee = user?.role === 'employee';
+  const isHOD = user?.role === 'hod';
+  const canEdit = !isEmployee && !isHOD;
+
   const activeShift = paramShift || user?.shift || '1';
   const activeDept = paramDept || 'fg';
   const deptLabels = DEPT_DELIVERY_LABELS[activeDept] || DEPT_DELIVERY_LABELS.fg;
 
   // --- State ---
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [timeLock, setTimeLock] = useState(null);
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(initialData);
   const [lastBackupTime, setLastBackupTime] = useState(new Date());
@@ -262,6 +267,13 @@ const DeliveryPage = () => {
   };
 
   useEffect(() => {
+    fetch(`${API}/api/timelock/${activeDept}/${activeShift}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setTimeLock(d))
+      .catch(() => {});
+  }, [activeShift, activeDept]);
+
+  useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     fetchMetrics();
     return () => clearInterval(timer);
@@ -339,7 +351,12 @@ const DeliveryPage = () => {
              <p className="text-[9px] font-bold text-emerald-500 uppercase">{DEPT_FULL[activeDept]} · Shift {activeShift}</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {timeLock?.enabled && (
+            <span className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] font-bold text-amber-700">
+              ⏰ Save window: {timeLock.startTime} – {timeLock.endTime}
+            </span>
+          )}
           <button
             onClick={() => {
               const headers = ['Date', 'Planned', 'Dispatched', 'Breakdowns', 'Delay 1', 'Delay 2'];
@@ -351,9 +368,11 @@ const DeliveryPage = () => {
             className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all">
             <Download size={13} /> CSV
           </button>
-          <button onClick={() => setIsModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase shadow-lg shadow-emerald-200 transition-all active:scale-95">
-            Update Metrics
-          </button>
+          {canEdit && (
+            <button onClick={() => setIsModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase shadow-lg shadow-emerald-200 transition-all active:scale-95">
+              Update Metrics
+            </button>
+          )}
         </div>
       </nav>
 
@@ -454,8 +473,8 @@ const DeliveryPage = () => {
         </div>
 
         <div className="col-span-12 grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
-          <LogContainer title="Personnel Management" data={staffLogs} type="staff" onOpen={() => setIsStaffModalOpen(true)} setDeleteConfig={setDeleteConfig} colorTheme="emerald" />
-          <LogContainer title="Operational Activity Tracker" data={activityLogs} type="activity" onOpen={() => setIsActivityModalOpen(true)} setDeleteConfig={setDeleteConfig} colorTheme="blue" />
+          <LogContainer title="Personnel Management" data={staffLogs} type="staff" onOpen={() => { if (!canEdit) return; setIsStaffModalOpen(true); }} setDeleteConfig={setDeleteConfig} colorTheme="emerald" />
+          <LogContainer title="Operational Activity Tracker" data={activityLogs} type="activity" onOpen={() => { if (!canEdit) return; setIsActivityModalOpen(true); }} setDeleteConfig={setDeleteConfig} colorTheme="blue" />
         </div>
       </main>
 
