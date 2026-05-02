@@ -83,6 +83,8 @@ export default function HR() {
   const reportRef = useRef(null);
   const user      = JSON.parse(localStorage.getItem('userInfo') || 'null');
   const isSupervisor = user?.role === 'supervisor';
+  const isSuperAdmin = user?.role === 'superadmin';
+  const canEdit    = isSupervisor || isSuperAdmin;
   const today     = new Date().toISOString().split('T')[0];
 
   const [shift,   setShift]   = useState('1');
@@ -206,15 +208,14 @@ export default function HR() {
               </span>
             )}
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
-              readOnly={isSupervisor} disabled={isSupervisor}
-              max={isSupervisor ? today : undefined}
-              title={isSupervisor ? 'Supervisors can only edit today' : ''}
-              className={`px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 focus:outline-none focus:border-orange-400 ${isSupervisor ? 'opacity-60 cursor-not-allowed bg-slate-50' : ''}`}
+              className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 focus:outline-none focus:border-orange-400"
             />
             <input type="text" placeholder="Employee ID" value={empId} onChange={e => setEmpId(e.target.value)}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 focus:outline-none focus:border-orange-400 w-36 uppercase" />
+              readOnly={!canEdit} disabled={!canEdit}
+              className={`px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 focus:outline-none focus:border-orange-400 w-36 uppercase ${!canEdit ? 'opacity-60 cursor-not-allowed bg-slate-50' : ''}`} />
             <input type="text" placeholder="Employee Name" value={empName} onChange={e => setEmpName(e.target.value)}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 focus:outline-none focus:border-orange-400 w-44" />
+              readOnly={!canEdit} disabled={!canEdit}
+              className={`px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 focus:outline-none focus:border-orange-400 w-44 ${!canEdit ? 'opacity-60 cursor-not-allowed bg-slate-50' : ''}`} />
             {saveMsg && (
               <span className={`text-sm font-semibold ${saveMsg.includes('success') ? 'text-green-600' : 'text-red-600'}`}>{saveMsg}</span>
             )}
@@ -227,7 +228,7 @@ export default function HR() {
                 className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-all">
                 <Download size={15} /> CSV
               </button>
-              <SaveBtn />
+              {canEdit && <SaveBtn />}
             </div>
           </div>
         </motion.div>
@@ -260,8 +261,9 @@ export default function HR() {
                       {COLS.map(col => (
                         <td key={col.key} className="px-2 py-1.5">
                           {col.isRag ? (
-                            <select value={entries[i][col.key] || ''} onChange={e => change(i, col.key, e.target.value)}
-                              className={`w-full rounded-lg px-2 py-1.5 text-xs border focus:outline-none focus:ring-1 focus:ring-orange-400 ${ragStyle(entries[i][col.key])}`}>
+                            <select value={entries[i][col.key] || ''} onChange={e => canEdit && change(i, col.key, e.target.value)}
+                              disabled={!canEdit}
+                              className={`w-full rounded-lg px-2 py-1.5 text-xs border focus:outline-none focus:ring-1 focus:ring-orange-400 ${ragStyle(entries[i][col.key])} ${!canEdit ? 'opacity-60 cursor-not-allowed' : ''}`}>
                               <option value="">-</option>
                               <option value="Green">✅ Green</option>
                               <option value="Amber">⚠️ Amber</option>
@@ -272,8 +274,9 @@ export default function HR() {
                               className="w-full rounded-lg px-2 py-1.5 text-xs border border-slate-200 bg-slate-50 cursor-not-allowed" />
                           ) : (
                             <input type="text" value={entries[i][col.key] || ''} onChange={e => change(i, col.key, e.target.value)}
+                              readOnly={!canEdit} disabled={!canEdit}
                               placeholder="-"
-                              className="w-full rounded-lg px-2 py-1.5 text-xs border border-slate-200 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+                              className={`w-full rounded-lg px-2 py-1.5 text-xs border border-slate-200 focus:outline-none focus:ring-1 focus:ring-orange-400 ${!canEdit ? 'opacity-60 cursor-not-allowed bg-slate-50' : ''}`} />
                           )}
                         </td>
                       ))}
@@ -289,9 +292,11 @@ export default function HR() {
             <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-700"><span className="w-3 h-3 rounded-full bg-amber-400 inline-block"></span>Amber — Needs Attention</span>
             <span className="flex items-center gap-1.5 text-xs font-semibold text-red-700"><span className="w-3 h-3 rounded-full bg-red-500 inline-block"></span>Red — Critical / Delayed</span>
           </div>
-          <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
-            <SaveBtn />
-          </div>
+          {canEdit && (
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
+              <SaveBtn />
+            </div>
+          )}
         </motion.div>
       </div>
     </div>

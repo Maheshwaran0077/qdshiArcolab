@@ -24,9 +24,9 @@ router.get('/count', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PATCH mark all read for a dept
+// PATCH mark all read — accepts dept from query param OR body
 router.patch('/read', async (req, res) => {
-  const { dept } = req.body;
+  const dept = req.query.dept || req.body?.dept;
   if (!dept) return res.status(400).json({ error: 'dept is required' });
   try {
     await HodNotification.updateMany({ hodDept: dept, read: false }, { $set: { read: true } });

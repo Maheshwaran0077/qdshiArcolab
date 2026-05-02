@@ -159,7 +159,7 @@ const SafetyPage = () => {
       const res = await fetch(`${API_BASE_URL}/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ letter: 'S', shift: shift || '1', dept: dept || 'fg', name: 'Safety', issueLogs: updatedLogs })
+        body: JSON.stringify({ letter: 'S', shift: shift || '1', dept: dept || 'fgmw', name: 'Safety', issueLogs: updatedLogs, empId: user?.employeeId, empName: user?.name })
       });
       if (res.ok) {
         const saved = await res.json();
@@ -170,6 +170,9 @@ const SafetyPage = () => {
         setNumUnsafeActs(0);
         setPeopleAffected(0);
         setSeverity("Low");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Save failed — check time lock or connection');
       }
     } catch (e) { alert("Sync failed."); }
   };

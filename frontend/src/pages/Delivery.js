@@ -219,9 +219,10 @@ const DeliveryPage = () => {
       const res = await fetch(`${API_BASE}/${type}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          letter: 'D', shift: activeShift, dept: activeDept, 
-          logs: type === 'staff' ? staffLogs : activityLogs 
+        body: JSON.stringify({
+          letter: 'D', shift: activeShift, dept: activeDept,
+          logs: type === 'staff' ? staffLogs : activityLogs,
+          empId: user?.employeeId, empName: user?.name,
         }),
       });
       if (res.ok) {
@@ -255,7 +256,7 @@ const DeliveryPage = () => {
       const res = await fetch(`${API_BASE}/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...dData, shift: activeShift, dept: activeDept, issueLogs: updatedLogs }),
+        body: JSON.stringify({ ...dData, shift: activeShift, dept: activeDept, issueLogs: updatedLogs, empId: user?.employeeId, empName: user?.name }),
       });
       if (res.ok) {
         const saved = await res.json();

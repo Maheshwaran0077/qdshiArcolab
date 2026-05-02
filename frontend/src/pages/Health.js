@@ -112,13 +112,15 @@ const Health = () => {
       : null;
     const payload = {
       month: currentMonthName, year: 2026,
-      dept: dept || 'fg', shift: shift || '1',
+      dept: dept || 'fgmw', shift: shift || '1',
       date: selectedDay.date, status: formData.status,
       keypoints: formData.keypoints,
       attendance: attendancePct != null ? String(attendancePct) : '',
       attendees:     formData.attendees     !== '' ? Number(formData.attendees)     : null,
       totalStrength: formData.totalStrength !== '' ? Number(formData.totalStrength) : null,
       userRole: user.role,
+      empId:   user?.employeeId,
+      empName: user?.name,
     };
     try {
       await axios.post('http://localhost:5000/api/health/update', payload);
@@ -145,8 +147,8 @@ const Health = () => {
       showNotify('Supervisors can only update today\'s entry', 'error');
       return;
     }
-    if (day.status && !isSuperAdmin) {
-      showNotify('Security Lock: Only Super Admin can modify entries', 'error');
+    if (day.status && !canUpdate) {
+      showNotify('Security Lock: Only authorized personnel can modify entries', 'error');
       return;
     }
     if (isOutsideTimeLock()) {

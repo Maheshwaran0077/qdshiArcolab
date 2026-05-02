@@ -3,6 +3,8 @@ const AuditLog        = require('../models/AuditLog');
 const HodNotification = require('../models/HodNotification');
 const User            = require('../models/User');
 
+const MODULE_NAMES = { Q: 'Quality', D: 'Delivery', S: 'Safety', H: 'Health' };
+
 // Returns { allowed: true } or { allowed: false, message }
 const checkTimeLock = async (dept, shift) => {
   try {
@@ -27,24 +29,51 @@ const checkTimeLock = async (dept, shift) => {
 
 const createAuditLog = async ({ date, empId, empName, dept, shift, module, deptType }) => {
   try {
-    await AuditLog.create({ date, empId, empName, dept, shift, module: module || null, deptType: deptType || 'special', timestamp: new Date() });
+    await AuditLog.create({
+      date, empId, empName, dept, shift,
+      module: module || null,
+      deptType: deptType || 'special',
+      timestamp: new Date(),
+    });
   } catch (err) {
     console.error('AuditLog error:', err.message);
   }
 };
 
-const notifyHod = async ({ empId, empName, dept, shift, module, deptType }) => {
+// Finds the HOD whose department field contains `dept` (handles comma-separated assignments)
+// and creates a notification with full details.
+const notifyHod = async ({ empId, empName, dept, shift, module, deptType, date }) => {
   try {
-    const hod = await User.findOne({ role: 'hod', department: dept });
+    // Regex matches "fgmw" inside "fgmw", "fgmw,pmw", "pmw,fgmw", etc.
+    const deptRegex = new RegExp(`(^|,)\\s*${dept}\\s*(,|$)`, 'i');
+    const hod = await User.findOne({ role: 'hod', department: { $regex: deptRegex } });
     if (!hod) return;
 
-    const moduleLabel = module ? ` · Module ${module}` : '';
-    const msg = `${empName} (${empId}) saved ${dept.toUpperCase()} Shift ${shift}${moduleLabel}`;
+    const now       = new Date();
+    const dateStr   = date || now.toISOString().split('T')[0];
+    const timeStr   = now.toTimeString().slice(0, 5); // HH:MM
+    const modName   = module ? `${module} — ${MODULE_NAMES[module] || module}` : 'Update';
+
+    const msg = [
+      `Emp: ${empName} (${empId})`,
+      `Dept: ${dept.toUpperCase()}`,
+      `Shift: ${shift}`,
+      `Module: ${modName}`,
+      `Date: ${dateStr}`,
+      `Time: ${timeStr}`,
+    ].join(' | ');
 
     await HodNotification.create({
-      hodDept: dept, empId, empName, dept, shift,
-      module: module || null, deptType: deptType || 'special',
-      message: msg, timestamp: new Date(), read: false,
+      hodDept:   dept,
+      empId,
+      empName,
+      dept,
+      shift,
+      module:    module    || null,
+      deptType:  deptType  || 'qdsh',
+      message:   msg,
+      timestamp: now,
+      read:      false,
     });
   } catch (err) {
     console.error('HodNotification error:', err.message);

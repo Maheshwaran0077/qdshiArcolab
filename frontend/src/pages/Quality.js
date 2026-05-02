@@ -59,7 +59,7 @@ const QualityPage = () => {
   const [timeLock, setTimeLock] = useState(null);
 
   useEffect(() => {
-    fetch(`${API}/api/timelock/${dept || 'fg'}/${shift || '1'}`)
+    fetch(`${API}/api/timelock/${dept || 'fgmw'}/${shift || '1'}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => setTimeLock(d))
       .catch(() => {});
@@ -95,7 +95,7 @@ const QualityPage = () => {
         const res = await fetch(`${API_BASE_URL}/update`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...qData, shift: shift || '1', dept: dept || 'fg', issueLogs: updatedLogs })
+          body: JSON.stringify({ ...qData, shift: shift || '1', dept: dept || 'fgmw', issueLogs: updatedLogs, empId: user?.employeeId, empName: user?.name })
         });
         if (res.ok) {
           const saved = await res.json();
@@ -126,7 +126,7 @@ const QualityPage = () => {
       const res = await fetch(`${API_BASE_URL}/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...qData, shift: shift || '1', dept: dept || 'fg', issueLogs: updatedLogs })
+        body: JSON.stringify({ ...qData, shift: shift || '1', dept: dept || 'fgmw', issueLogs: updatedLogs, empId: user?.employeeId, empName: user?.name })
       });
       if (res.ok) {
         const saved = await res.json();
@@ -135,6 +135,9 @@ const QualityPage = () => {
         setDeviationType("");
         setCustomReason("");
         notifySuccess(`Shift ${shift} Updated`);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        notifyError(err.error || 'Save failed — check time lock or connection');
       }
     } catch (e) { notifyError("Sync failed"); }
   };
@@ -145,9 +148,10 @@ const QualityPage = () => {
       const res = await fetch(`${API_BASE_URL}/staff`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ letter: 'Q', shift: shift || '1', dept: dept || 'fg', logs: staffLogs }),
+        body: JSON.stringify({ letter: 'Q', shift: shift || '1', dept: dept || 'fgmw', logs: staffLogs, empId: user?.employeeId, empName: user?.name }),
       });
       if (res.ok) notifySuccess("Staff Logs Updated");
+      else { const e = await res.json().catch(() => ({})); notifyError(e.error || 'Staff save failed'); }
     } catch (e) { notifyError("Staff sync failed"); }
     finally { setTableSyncing(prev => ({ ...prev, staff: false })); }
   };
@@ -158,9 +162,10 @@ const QualityPage = () => {
       const res = await fetch(`${API_BASE_URL}/activity`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ letter: 'Q', shift: shift || '1', dept: dept || 'fg', logs: activityLogs }),
+        body: JSON.stringify({ letter: 'Q', shift: shift || '1', dept: dept || 'fgmw', logs: activityLogs, empId: user?.employeeId, empName: user?.name }),
       });
       if (res.ok) notifySuccess("Activity Logs Updated");
+      else { const e = await res.json().catch(() => ({})); notifyError(e.error || 'Activity save failed'); }
     } catch (e) { notifyError("Activity sync failed"); }
     finally { setTableSyncing(prev => ({ ...prev, activity: false })); }
   };
