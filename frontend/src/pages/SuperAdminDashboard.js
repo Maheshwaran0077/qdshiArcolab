@@ -2,9 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   UserPlus, ShieldCheck, Users, X, Mail, Hash, Calendar, Lock,
   Briefcase, Clock, ChevronRight, Key, Save, AlertCircle, CheckCircle2, Trash2,
+  Timer, LogIn,
 } from 'lucide-react';
 import axios from 'axios';
-import { DEPARTMENTS } from '../App';
+import { ALL_DEPARTMENTS } from '../departments';
+
+const LOCAL_ALL_DEPARTMENTS = ALL_DEPARTMENTS;
+
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const ALL_DEPT_SHIFTS = ALL_DEPARTMENTS.flatMap(d => ['1','2','3'].map(s => ({ dept: d.key, deptName: d.short, shift: s })));
 
 const SHIFTS = ['1', '2', '3'];
 
@@ -40,8 +46,8 @@ const DeptCell = ({ value, onChange }) => {
   const [localSel, setLocalSel] = useState(() => strToArr(value));
   const [open, setOpen]         = useState(false);
 
-  const displayText = localSel.length
-    ? localSel.map(k => DEPARTMENTS.find(d => d.key === k)?.short || k.toUpperCase()).join(', ')
+const displayText = localSel.length
+    ? localSel.map(k => LOCAL_ALL_DEPARTMENTS.find(d => d.key === k)?.short || k.toUpperCase()).join(', ')
     : 'None assigned';
 
   return (
@@ -52,7 +58,7 @@ const DeptCell = ({ value, onChange }) => {
       </button>
       {open && (
         <div className="absolute left-0 top-9 z-30 bg-white border border-slate-200 rounded-xl shadow-2xl p-3 min-w-[240px] max-h-64 overflow-y-auto">
-          {DEPARTMENTS.map(dept => (
+          {LOCAL_ALL_DEPARTMENTS.map(dept => (
             <label key={dept.key}
               onClick={() => setLocalSel(prev => toggleItem(prev, dept.key))}
               className="flex items-center gap-2 py-1.5 cursor-pointer group">
@@ -93,7 +99,7 @@ const UserRow = ({ u, roleType, editData, onLocalChange, onSave, onDeleteClick }
             onChange={e => onLocalChange(id, 'department', e.target.value)}
             className="bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-1.5 text-[10px] font-bold text-emerald-900 outline-none max-w-[220px] truncate"
           >
-            {DEPARTMENTS.map(d => (
+{LOCAL_ALL_DEPARTMENTS.map(d => (
               <option key={d.key} value={d.key}>{d.short} — {d.name}</option>
             ))}
           </select>
@@ -222,6 +228,16 @@ const SuperAdminDashboard = () => {
   const [notification, setNotification] = useState({ show: false, message: '', type: '' });
   const [deleteModal,  setDeleteModal]  = useState({ open: false, userId: null, userName: '' });
 
+  // Time Lock Management
+  const [timeLocks,     setTimeLocks]     = useState({});
+  const [tlSaving,      setTlSaving]      = useState({});
+  const [showTimeLock,  setShowTimeLock]  = useState(false);
+
+  // Login Logs
+  const [loginLogs,    setLoginLogs]    = useState([]);
+  const [logsLoading,  setLogsLoading]  = useState(false);
+  const [showLoginLog, setShowLoginLog] = useState(false);
+
   const showNotify = (message, type = 'success') => {
     setNotification({ show: true, message, type });
     setTimeout(() => setNotification({ show: false, message: '', type: '' }), 4000);
@@ -246,6 +262,50 @@ const SuperAdminDashboard = () => {
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Time lock fetch
+  const fetchTimeLocks = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API}/api/timelock`);
+      const map = {};
+      (res.data || []).forEach(tl => { map[`${tl.dept}-${tl.shift}`] = tl; });
+      // Initialise missing combos with defaults
+      ALL_DEPT_SHIFTS.forEach(({ dept, shift }) => {
+        const k = `${dept}-${shift}`;
+        if (!map[k]) map[k] = { dept, shift, startTime: '06:00', endTime: '23:00', enabled: false };
+      });
+      setTimeLocks(map);
+    } catch {}
+  }, []);
+
+  const saveSingleTimeLock = async (dept, shift) => {
+    const k = `${dept}-${shift}`;
+    setTlSaving(prev => ({ ...prev, [k]: true }));
+    try {
+      const tl = timeLocks[k];
+      await axios.post(`${API}/api/timelock`, { dept, shift, startTime: tl.startTime, endTime: tl.endTime, enabled: tl.enabled });
+      showNotify(`Time lock saved: ${dept} Shift ${shift}`, 'success');
+    } catch { showNotify('Save failed', 'error'); }
+    setTlSaving(prev => ({ ...prev, [k]: false }));
+  };
+
+  // Login log fetch
+  const fetchLoginLogs = useCallback(async () => {
+    setLogsLoading(true);
+    try {
+      const res = await axios.get(`${API}/api/loginlog`);
+      setLoginLogs(res.data || []);
+    } catch {}
+    setLogsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (showTimeLock && Object.keys(timeLocks).length === 0) fetchTimeLocks();
+  }, [showTimeLock, timeLocks, fetchTimeLocks]);
+
+  useEffect(() => {
+    if (showLoginLog) fetchLoginLogs();
+  }, [showLoginLog, fetchLoginLogs]);
 
   const handleLocalChange = (id, field, value) => {
     setEditData(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
@@ -284,7 +344,7 @@ const SuperAdminDashboard = () => {
   const openModal = (title, role) => {
     setFormData({
       name: '', dob: '', employeeId: '', gmail: '', password: '',
-      hodDept: DEPARTMENTS[0]?.key || '',
+      hodDept: ALL_DEPARTMENTS[0]?.key || '',
       selectedDepts: [], selectedShifts: [],
     });
     setModalConfig({ isOpen: true, title, role });
@@ -338,7 +398,115 @@ const SuperAdminDashboard = () => {
           <AdminCard title="Manage HODs"  desc="Single department oversight access"  icon={<ShieldCheck size={28}/>} color="bg-emerald-700" onClick={() => openModal('Register HOD', 'hod')} />
           <AdminCard title="Supervisors"  desc="Multi-shift & department tracking"   icon={<UserPlus size={28}/>}   color="bg-emerald-900" onClick={() => openModal('Register Supervisor', 'supervisor')} />
           <AdminCard title="Employees"    desc="General staff — view only access"    icon={<Users size={28}/>}      color="bg-green-500"   onClick={() => openModal('Register Employee', 'employee')} />
+          <AdminCard title="Time Lock"    desc="Configure save windows per dept/shift" icon={<Timer size={28}/>}   color="bg-amber-600"   onClick={() => setShowTimeLock(o => !o)} />
+          <AdminCard title="Login Logs"   desc="View user login & logout activity"   icon={<LogIn size={28}/>}    color="bg-slate-700"   onClick={() => setShowLoginLog(o => !o)} />
         </div>
+
+        {/* Time Lock Management Panel */}
+        {showTimeLock && (
+          <div className="bg-white rounded-[2rem] shadow-xl border border-amber-100 overflow-hidden mb-8">
+            <div className="bg-amber-600 p-5 text-white flex justify-between items-center">
+              <h3 className="font-black uppercase text-xs tracking-widest flex items-center gap-2"><Timer size={16}/> Time Lock Management</h3>
+              <button onClick={() => setShowTimeLock(false)} className="hover:bg-amber-500 p-1 rounded-lg transition-colors"><X size={18}/></button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-amber-50 text-amber-900 text-[10px] font-black uppercase tracking-widest border-b border-amber-100">
+                    <th className="px-5 py-3">Department</th>
+                    <th className="px-5 py-3">Shift</th>
+                    <th className="px-5 py-3">Enabled</th>
+                    <th className="px-5 py-3">Start Time</th>
+                    <th className="px-5 py-3">End Time</th>
+                    <th className="px-5 py-3 text-center">Save</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-amber-50">
+                  {ALL_DEPT_SHIFTS.map(({ dept, deptName, shift }) => {
+                    const k = `${dept}-${shift}`;
+                    const tl = timeLocks[k] || { startTime: '06:00', endTime: '23:00', enabled: false };
+                    return (
+                      <tr key={k} className="hover:bg-amber-50/30 transition-colors">
+                        <td className="px-5 py-2.5 font-bold text-slate-700">{deptName}</td>
+                        <td className="px-5 py-2.5 font-black text-slate-500">Shift {shift}</td>
+                        <td className="px-5 py-2.5">
+                          <button
+                            onClick={() => setTimeLocks(prev => ({ ...prev, [k]: { ...tl, enabled: !tl.enabled } }))}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${tl.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                            {tl.enabled ? 'ON' : 'OFF'}
+                          </button>
+                        </td>
+                        <td className="px-5 py-2.5">
+                          <input type="time" value={tl.startTime}
+                            onChange={e => setTimeLocks(prev => ({ ...prev, [k]: { ...tl, startTime: e.target.value } }))}
+                            className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:border-amber-400" />
+                        </td>
+                        <td className="px-5 py-2.5">
+                          <input type="time" value={tl.endTime}
+                            onChange={e => setTimeLocks(prev => ({ ...prev, [k]: { ...tl, endTime: e.target.value } }))}
+                            className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:border-amber-400" />
+                        </td>
+                        <td className="px-5 py-2.5 text-center">
+                          <button onClick={() => saveSingleTimeLock(dept, shift)} disabled={tlSaving[k]}
+                            className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white p-2 rounded-lg transition-all flex items-center justify-center mx-auto">
+                            <Save size={14}/>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Login Log Panel */}
+        {showLoginLog && (
+          <div className="bg-white rounded-[2rem] shadow-xl border border-slate-200 overflow-hidden mb-8">
+            <div className="bg-slate-700 p-5 text-white flex justify-between items-center">
+              <h3 className="font-black uppercase text-xs tracking-widest flex items-center gap-2"><LogIn size={16}/> Login / Logout Logs</h3>
+              <div className="flex items-center gap-2">
+                <button onClick={fetchLoginLogs} className="text-[10px] font-black bg-slate-600 hover:bg-slate-500 px-3 py-1.5 rounded-lg transition-all">Refresh</button>
+                <button onClick={() => setShowLoginLog(false)} className="hover:bg-slate-600 p-1 rounded-lg transition-colors"><X size={18}/></button>
+              </div>
+            </div>
+            <div className="overflow-x-auto max-h-80">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-widest border-b border-slate-100 sticky top-0">
+                  <tr>
+                    <th className="px-5 py-3">Timestamp</th>
+                    <th className="px-5 py-3">Emp ID</th>
+                    <th className="px-5 py-3">Name</th>
+                    <th className="px-5 py-3">Role</th>
+                    <th className="px-5 py-3">Dept</th>
+                    <th className="px-5 py-3">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {logsLoading ? (
+                    <tr><td colSpan={6} className="py-10 text-center text-slate-300 font-bold uppercase animate-pulse">Loading...</td></tr>
+                  ) : loginLogs.length === 0 ? (
+                    <tr><td colSpan={6} className="py-10 text-center text-slate-300 font-bold uppercase">No logs found</td></tr>
+                  ) : loginLogs.slice(0, 100).map((log, i) => (
+                    <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-5 py-2.5 text-slate-500 whitespace-nowrap">{new Date(log.timestamp).toLocaleString()}</td>
+                      <td className="px-5 py-2.5 font-black text-slate-700 uppercase">{log.empId || '—'}</td>
+                      <td className="px-5 py-2.5 font-semibold text-slate-700">{log.empName || log.userId || '—'}</td>
+                      <td className="px-5 py-2.5 font-bold text-slate-500 uppercase">{log.role || '—'}</td>
+                      <td className="px-5 py-2.5 font-bold text-slate-500 uppercase">{log.dept || '—'}</td>
+                      <td className="px-5 py-2.5">
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${log.action === 'login' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'}`}>
+                          {log.action}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Tables */}
         <UserTable title="Active HODs"        count={hods.length}        users={hods}        roleType="hod"        loading={loading} editData={editData} onLocalChange={handleLocalChange} onSave={handleRowSave} onDeleteClick={handleDeleteClick} />
@@ -410,7 +578,7 @@ const SuperAdminDashboard = () => {
                     onChange={e => setFormData(p => ({ ...p, hodDept: e.target.value }))}
                     className="w-full bg-white border border-emerald-200 rounded-xl px-4 py-3 text-sm font-semibold text-emerald-900 outline-none focus:ring-2 focus:ring-emerald-500"
                   >
-                    {DEPARTMENTS.map(d => (
+                    {ALL_DEPARTMENTS.map(d => (
                       <option key={d.key} value={d.key}>{d.short} — {d.name}</option>
                     ))}
                   </select>
@@ -445,8 +613,8 @@ const SuperAdminDashboard = () => {
                       <Briefcase size={16} className="text-emerald-600" />
                       <span className="text-xs font-black text-slate-600 uppercase tracking-widest">Department(s)</span>
                     </div>
-                    <div className="space-y-1.5 max-h-44 overflow-y-auto">
-                      {DEPARTMENTS.map(dept => (
+<div className="space-y-1.5 max-h-44 overflow-y-auto">
+                      {LOCAL_ALL_DEPARTMENTS.map(dept => (
                         <label key={dept.key}
                           onClick={() => setFormData(p => ({ ...p, selectedDepts: toggleItem(p.selectedDepts, dept.key) }))}
                           className="flex items-center gap-3 cursor-pointer group py-1">

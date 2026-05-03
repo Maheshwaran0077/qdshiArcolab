@@ -1,13 +1,102 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useParams as useRParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Star, Activity, Clock, Calendar, TrendingUp, Trash2, AlertCircle } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import { ChevronLeft, ChevronRight, Star, Activity, Clock, Calendar, TrendingUp, Trash2, AlertCircle, Download } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid, YAxis, Legend, Tooltip } from 'recharts';
 import CircularTracker from '../components/CircularTracker';
 import { dashboardMetrics as initialData } from '../dashboardData';
 
 const API_BASE = 'http://localhost:5000/api/metrics';
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const DEPT_FULL = { fg: 'Finished Good Warehouse', pm: 'Packing Material Warehouse', rm: 'Raw Material Warehouse' };
+const DEPT_FULL = { fg: 'Finished Good Warehouse', pm: 'Packing Material Warehouse', rm: 'Raw Material Warehouse', qcmad: 'QC & Microbiology & AD Lab', pro: 'Production', pop: 'Post Production', ppp: 'Primary Packing Production', spp: 'Secondary Packing Production', fac: 'Facilities' };
+
+// Department-specific Delivery metric labels per GMP document
+// delay*Type: 'time' = red if >0, unit=min | 'zero' = red if >0, unit=count/batches | 'pct' = red if <100, unit=%
+const DEPT_DELIVERY_LABELS = {
+  fg: {
+    planVsActual: 'Plan vs Actual Disposed',
+    archiveTitle: 'Disposal Archives',
+    targetLabel: 'Target Disposed', actualLabel: 'Actual Disposed',
+    delay1Col: 'BPR Receipts', delay1Ph: 'Delayed BPR Receipts (min)',
+    delay1Unit: 'min', delay1Type: 'time',
+    delay2Col: 'Shipments', delay2Ph: 'Delayed Shipments / Logistics (min)',
+    delay2Unit: 'min', delay2Type: 'time',
+  },
+  pm: {
+    planVsActual: 'Plan vs Actual Dispensed',
+    archiveTitle: 'Dispatch Archives',
+    targetLabel: 'Target Dispensed', actualLabel: 'Actual Dispensed',
+    delay1Col: 'PBR/Indent', delay1Ph: 'Delayed PBR / Indent (min)',
+    delay1Unit: 'min', delay1Type: 'time',
+    delay2Col: 'PM QC Approval', delay2Ph: 'Delayed PM QC Approval (min)',
+    delay2Unit: 'min', delay2Type: 'time',
+  },
+  rm: {
+    planVsActual: 'Plan vs Actual Dispensed',
+    archiveTitle: 'Dispatch Archives',
+    targetLabel: 'Target Dispensed', actualLabel: 'Actual Dispensed',
+    delay1Col: 'BMR/Indent', delay1Ph: 'Delayed BMR / Indent (min)',
+    delay1Unit: 'min', delay1Type: 'time',
+    delay2Col: 'RM QC Approval', delay2Ph: 'Delayed RM QC Approval (min)',
+    delay2Unit: 'min', delay2Type: 'time',
+  },
+  qcmad: {
+    planVsActual: 'Plan vs Actual Tasks',
+    archiveTitle: 'Task Archives',
+    targetLabel: 'Tasks Planned', actualLabel: 'Tasks Executed',
+    delay1Col: 'Sample Testing', delay1Ph: 'Delayed Sample Testing (min)',
+    delay1Unit: 'min', delay1Type: 'time',
+    delay2Col: 'Repeated Testing', delay2Ph: 'No. of Invalid / Repeated Testing',
+    delay2Unit: '', delay2Type: 'zero',
+  },
+  pro: {
+    planVsActual: 'Plan vs Actual Manufactured',
+    archiveTitle: 'Production Archives',
+    targetLabel: 'Target Output', actualLabel: 'Actual Output',
+    delay1Col: 'RM Shortage', delay1Ph: 'Raw Material Shortage Impact (batches)',
+    delay1Unit: '', delay1Type: 'zero',
+    delay2Col: 'Changeover', delay2Ph: 'Non-Serial Changeover Time (min)',
+    delay2Unit: 'min', delay2Type: 'time',
+  },
+  pop: {
+    planVsActual: 'Plan vs Actual Manufactured',
+    archiveTitle: 'Production Archives',
+    targetLabel: 'Target Output', actualLabel: 'Actual Output',
+    delay1Col: 'RM Shortage', delay1Ph: 'Raw Material Shortage Impact (batches)',
+    delay1Unit: '', delay1Type: 'zero',
+    delay2Col: 'Changeover', delay2Ph: 'Non-Serial Changeover Time (min)',
+    delay2Unit: 'min', delay2Type: 'time',
+  },
+  ppp: {
+    planVsActual: 'Plan vs Actual Packed',
+    archiveTitle: 'Packing Archives',
+    targetLabel: 'Target Packed', actualLabel: 'Actual Packed',
+    delay1Col: 'RM Shortage', delay1Ph: 'Raw Material Shortage Impact (batches)',
+    delay1Unit: '', delay1Type: 'zero',
+    delay2Col: 'Changeover', delay2Ph: 'Non-Serial Changeover Time (min)',
+    delay2Unit: 'min', delay2Type: 'time',
+  },
+  spp: {
+    planVsActual: 'Plan vs Actual Packed',
+    archiveTitle: 'Packing Archives',
+    targetLabel: 'Target Packed', actualLabel: 'Actual Packed',
+    delay1Col: 'Label Errors', delay1Ph: 'No. of Labeling / Serialization Errors',
+    delay1Unit: '', delay1Type: 'zero',
+    delay2Col: 'Pkg Shortage', delay2Ph: 'No. of Carton / Packaging Material Shortage (batches)',
+    delay2Unit: '', delay2Type: 'zero',
+  },
+  fac: {
+    planVsActual: 'Plan vs Actual Tasks',
+    archiveTitle: 'Task Archives',
+    targetLabel: 'Tasks Planned', actualLabel: 'Tasks Completed',
+    delay1Col: 'Housekeeping', delay1Ph: 'GMP & Non-GMP Housekeeping Compliance (%)',
+    delay1Unit: '%', delay1Type: 'pct',
+    delay2Col: 'Waste Removal', delay2Ph: 'Timeliness of Waste Removal (%)',
+    delay2Unit: '%', delay2Type: 'pct',
+  },
+};
 
 const THEME_STYLES = {
   emerald: { bg: 'bg-emerald-600', text: 'text-emerald-800', light: 'bg-emerald-50/20', border: 'border-emerald-100' },
@@ -18,12 +107,18 @@ const DeliveryPage = () => {
   const navigate = useNavigate();
   const { shift: paramShift, dept: paramDept } = useRParams();
   const user = JSON.parse(localStorage.getItem('userInfo') || 'null');
-  
+  const isEmployee = user?.role === 'employee';
+  const isHOD = user?.role === 'hod';
+  const canEdit = !isEmployee && !isHOD;
+  const reportRef = useRef(null);
+
   const activeShift = paramShift || user?.shift || '1';
   const activeDept = paramDept || 'fg';
+  const deptLabels = DEPT_DELIVERY_LABELS[activeDept] || DEPT_DELIVERY_LABELS.fg;
 
   // --- State ---
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [timeLock, setTimeLock] = useState(null);
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(initialData);
   const [lastBackupTime, setLastBackupTime] = useState(new Date());
@@ -127,9 +222,10 @@ const DeliveryPage = () => {
       const res = await fetch(`${API_BASE}/${type}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          letter: 'D', shift: activeShift, dept: activeDept, 
-          logs: type === 'staff' ? staffLogs : activityLogs 
+        body: JSON.stringify({
+          letter: 'D', shift: activeShift, dept: activeDept,
+          logs: type === 'staff' ? staffLogs : activityLogs,
+          empId: user?.employeeId, empName: user?.name,
         }),
       });
       if (res.ok) {
@@ -163,7 +259,7 @@ const DeliveryPage = () => {
       const res = await fetch(`${API_BASE}/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...dData, shift: activeShift, dept: activeDept, issueLogs: updatedLogs }),
+        body: JSON.stringify({ ...dData, shift: activeShift, dept: activeDept, issueLogs: updatedLogs, empId: user?.employeeId, empName: user?.name }),
       });
       if (res.ok) {
         const saved = await res.json();
@@ -173,6 +269,13 @@ const DeliveryPage = () => {
       }
     } catch (e) { alert('Sync failed.'); }
   };
+
+  useEffect(() => {
+    fetch(`${API}/api/timelock/${activeDept}/${activeShift}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setTimeLock(d))
+      .catch(() => {});
+  }, [activeShift, activeDept]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -207,10 +310,20 @@ const DeliveryPage = () => {
       return { name: m.monthName.slice(0, 3), pass: passCount, fail: m.logs.length - passCount };
     }), [allYearLogs]);
 
+  const downloadPDF = async () => {
+    if (!reportRef.current) return;
+    const canvas = await html2canvas(reportRef.current, { scale: 1.5, useCORS: true, backgroundColor: '#F8FAFC' });
+    const img = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('l', 'mm', 'a4');
+    const pw = pdf.internal.pageSize.getWidth();
+    pdf.addImage(img, 'PNG', 0, 0, pw, (canvas.height * pw) / canvas.width);
+    pdf.save(`Delivery_Shift${activeShift}_${activeDept}_${MONTHS[viewMonth]}_${viewYear}.pdf`);
+  };
+
   if (loading) return <div className="h-screen flex items-center justify-center font-black text-emerald-500 animate-pulse bg-slate-50">LOADING SYSTEM...</div>;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] font-sans flex flex-col text-slate-900">
+    <div ref={reportRef} className="min-h-screen bg-[#F8FAFC] font-sans flex flex-col text-slate-900">
       {/* Custom Styled Alert Popup */}
       {deleteConfig.isOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -248,13 +361,37 @@ const DeliveryPage = () => {
           </button>
           <div className="h-8 w-[1px] bg-slate-200" />
           <div>
-             <h1 className="text-[11px] font-black uppercase tracking-tighter text-slate-800">Delivery Metrics Control</h1>
+             <h1 className="text-[11px] font-black uppercase tracking-tighter text-slate-800">Delivery — {deptLabels.planVsActual}</h1>
              <p className="text-[9px] font-bold text-emerald-500 uppercase">{DEPT_FULL[activeDept]} · Shift {activeShift}</p>
           </div>
         </div>
-        <button onClick={() => setIsModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase shadow-lg shadow-emerald-200 transition-all active:scale-95">
-          Update Metrics
-        </button>
+        <div className="flex gap-2 items-center">
+          {timeLock?.enabled && (
+            <span className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] font-bold text-amber-700">
+              ⏰ Save window: {timeLock.startTime} – {timeLock.endTime}
+            </span>
+          )}
+          <button onClick={downloadPDF}
+            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all">
+            <Download size={13} /> PDF
+          </button>
+          <button
+            onClick={() => {
+              const headers = ['Date', 'Planned', 'Dispatched', 'Breakdowns', 'Delay 1', 'Delay 2'];
+              const rows = dData.issueLogs.map(l => [l.date || l.rawDate, l.planned, l.dispatched, l.breakdowns, l.pbrDelay, l.qcDelay]);
+              const csv = [headers, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+              const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+              a.download = `Delivery_Shift${activeShift}_${activeDept}.csv`; a.click();
+            }}
+            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all">
+            <Download size={13} /> CSV
+          </button>
+          {canEdit && (
+            <button onClick={() => setIsModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase shadow-lg shadow-emerald-200 transition-all active:scale-95">
+              Update Metrics
+            </button>
+          )}
+        </div>
       </nav>
 
       <main className="flex-1 grid grid-cols-12 gap-6 p-6 max-w-[1600px] mx-auto w-full">
@@ -290,19 +427,19 @@ const DeliveryPage = () => {
 
         <div className="col-span-12 lg:col-span-6 flex flex-col gap-6">
           <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden h-[400px] flex flex-col">
-            <SectionHeader icon={<Star size={14} className="text-emerald-500" />} title="Dispatch Archives" />
+            <SectionHeader icon={<Star size={14} className="text-emerald-500" />} title={deptLabels.archiveTitle} />
             <div className="px-8 py-3 bg-slate-50 grid grid-cols-4 text-[9px] font-black text-slate-400 uppercase border-b border-slate-100">
-              <span>Timeline</span><span className="text-center">Target</span><span className="text-center">Actual</span><span className="text-right">Action</span>
+              <span>Timeline</span><span className="text-center">{deptLabels.targetLabel}</span><span className="text-center">{deptLabels.actualLabel}</span><span className="text-right">Action</span>
             </div>
-            <InfiniteScrollList data={allYearLogs} type="dispatch" setDeleteConfig={setDeleteConfig} />
+            <InfiniteScrollList data={allYearLogs} type="dispatch" setDeleteConfig={setDeleteConfig} deptLabels={deptLabels} />
           </div>
 
           <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden h-[300px] flex flex-col">
-            <SectionHeader icon={<Clock size={14} className="text-orange-500" />} title="Minor Downtime Metrics" />
+            <SectionHeader icon={<Clock size={14} className="text-orange-500" />} title="Problem-Solving Metrics" />
             <div className="px-8 py-3 bg-slate-50 grid grid-cols-5 text-[9px] font-black text-slate-400 uppercase border-b border-slate-100">
-              <span>Date</span><span className="text-center">M/C</span><span className="text-center">PBR</span><span className="text-center">QC</span><span className="text-right">Action</span>
+              <span>Date</span><span className="text-center">M/C</span><span className="text-center">{deptLabels.delay1Col}</span><span className="text-center">{deptLabels.delay2Col}</span><span className="text-right">Action</span>
             </div>
-            <InfiniteScrollList data={allYearLogs} type="minor" setDeleteConfig={setDeleteConfig} />
+            <InfiniteScrollList data={allYearLogs} type="minor" setDeleteConfig={setDeleteConfig} deptLabels={deptLabels} />
           </div>
         </div>
 
@@ -354,8 +491,8 @@ const DeliveryPage = () => {
         </div>
 
         <div className="col-span-12 grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
-          <LogContainer title="Personnel Management" data={staffLogs} type="staff" onOpen={() => setIsStaffModalOpen(true)} setDeleteConfig={setDeleteConfig} colorTheme="emerald" />
-          <LogContainer title="Operational Activity Tracker" data={activityLogs} type="activity" onOpen={() => setIsActivityModalOpen(true)} setDeleteConfig={setDeleteConfig} colorTheme="blue" />
+          <LogContainer title="Personnel Management" data={staffLogs} type="staff" onOpen={() => { if (!canEdit) return; setIsStaffModalOpen(true); }} setDeleteConfig={setDeleteConfig} colorTheme="emerald" />
+          <LogContainer title="Operational Activity Tracker" data={activityLogs} type="activity" onOpen={() => { if (!canEdit) return; setIsActivityModalOpen(true); }} setDeleteConfig={setDeleteConfig} colorTheme="blue" />
         </div>
       </main>
 
@@ -372,20 +509,35 @@ const DeliveryPage = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-[400px] p-8 shadow-2xl">
-            <h2 className="font-black text-slate-800 uppercase text-center text-sm mb-8">Production Sync</h2>
-            <div className="space-y-4">
-              <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold outline-none" />
-              <div className="grid grid-cols-2 gap-4">
-                <input type="number" placeholder="Target" value={plannedCount} onChange={e => setPlannedCount(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold" />
-                <input type="number" placeholder="Actual" value={dispatchedCount} onChange={e => setDispatchedCount(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold" />
+          <div className="bg-white rounded-[2.5rem] w-full max-w-[420px] p-8 shadow-2xl">
+            <h2 className="font-black text-slate-800 uppercase text-center text-sm mb-2">Update Delivery Log</h2>
+            <p className="text-[9px] font-bold text-emerald-500 uppercase text-center mb-6 tracking-widest">{DEPT_FULL[activeDept]} · Shift {activeShift}</p>
+            <div className="space-y-3">
+              <input type="date" value={customDate}
+                onChange={e => setCustomDate(e.target.value)}
+                max={user?.role === 'supervisor' ? new Date().toISOString().split('T')[0] : undefined}
+                readOnly={user?.role === 'supervisor'}
+                title={user?.role === 'supervisor' ? 'Supervisors can only update today' : ''}
+                className="w-full bg-slate-50 rounded-2xl p-4 font-bold outline-none" />
+
+              {/* Performance Metrics */}
+              <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest pt-1 border-t border-slate-100">Performance Metrics</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase -mt-1">{deptLabels.planVsActual} — Green: ≥90% · Red: &lt;90%</p>
+              <div className="grid grid-cols-2 gap-3">
+                <input type="number" placeholder={deptLabels.targetLabel} value={plannedCount} onChange={e => setPlannedCount(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold text-[12px]" />
+                <input type="number" placeholder={deptLabels.actualLabel} value={dispatchedCount} onChange={e => setDispatchedCount(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold text-[12px]" />
               </div>
-              <input type="number" placeholder="Breakdowns" value={breakdowns} onChange={e => setBreakdowns(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold" />
-              <div className="grid grid-cols-2 gap-4">
-                <input type="number" placeholder="PBR" value={pbrDelay} onChange={e => setPbrDelay(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold" />
-                <input type="number" placeholder="QC" value={qcDelay} onChange={e => setQcDelay(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold" />
+
+              {/* Problem-Solving Metrics */}
+              <p className="text-[9px] font-black text-orange-500 uppercase tracking-widest pt-1 border-t border-slate-100">Problem-Solving Metrics</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase -mt-1">Equipment Breakdown — Green: 0 · Red: &gt;0</p>
+              <input type="number" placeholder="No. of Equipment Breakdown" value={breakdowns} onChange={e => setBreakdowns(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold" />
+              <div className="grid grid-cols-2 gap-3">
+                <input type="number" placeholder={deptLabels.delay1Ph} value={pbrDelay} onChange={e => setPbrDelay(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold text-[10px]" />
+                <input type="number" placeholder={deptLabels.delay2Ph} value={qcDelay} onChange={e => setQcDelay(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold text-[10px]" />
               </div>
-              <button onClick={handleUpdateStatus} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black uppercase">Commit to Database</button>
+
+              <button onClick={handleUpdateStatus} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black uppercase mt-2">Commit to Database</button>
               <button onClick={() => setIsModalOpen(false)} className="w-full text-[10px] font-bold text-slate-400 uppercase">Close</button>
             </div>
           </div>
@@ -425,29 +577,60 @@ const TableContent = ({ data, type, onEdit, readonly, setDeleteConfig }) => {
   );
 };
 
-const InfiniteScrollList = ({ data, type, setDeleteConfig }) => (
+const minorColor = (value, type) => {
+  const n = Number(value);
+  if (type === 'pct') return n >= 100 ? 'text-emerald-600' : 'text-rose-500';
+  return n === 0 ? 'text-emerald-600' : 'text-rose-500';
+};
+
+const minorFmt = (value, unit) => {
+  const n = Number(value);
+  if (value === '' || value === null || value === undefined) return '-';
+  if (unit === 'min') return `${n}m`;
+  if (unit === '%') return `${n}%`;
+  return `${n}`;
+};
+
+const InfiniteScrollList = ({ data, type, setDeleteConfig, deptLabels }) => (
   <div className="flex-1 overflow-y-auto no-scrollbar px-8">
     {data.map(({ monthName, logs }) => logs.length > 0 && (
       <div key={monthName} className="mb-6">
         <div className="sticky top-0 bg-white/90 py-3 text-[9px] font-black text-emerald-600 uppercase border-b border-slate-50 z-10">{monthName}</div>
-        {logs.map((log, i) => (
-          <div key={i} className={`grid ${type === 'dispatch' ? 'grid-cols-4' : 'grid-cols-5'} py-4 text-[11px] border-b border-slate-50 items-center group`}>
-            <span className="font-bold text-slate-400">{log.date.split('/')[0]}/{log.date.split('/')[1]}</span>
-            {type === 'dispatch' ? (
-              <><span className="text-center text-slate-500">{log.planned}</span><span className="text-center font-black">{log.dispatched}</span></>
-            ) : (
-              <><span className="text-center font-black text-rose-500">{log.breakdowns || '-'}</span><span className="text-center">{log.pbrDelay}m</span><span className="text-center">{log.qcDelay}m</span></>
-            )}
-            <div className="text-right">
-              <button 
-                onClick={() => setDeleteConfig({ isOpen: true, type: type, index: i, rawDate: log.rawDate })} 
-                className="opacity-0 group-hover:opacity-100 p-1 text-rose-400 hover:bg-rose-50 rounded transition-all"
-              >
-                <Trash2 size={12}/>
-              </button>
+        {logs.map((log, i) => {
+          const efficiency = log.planned > 0 ? (log.dispatched / log.planned) * 100 : 0;
+          const dispatchOk = efficiency >= 90;
+          return (
+            <div key={i} className={`grid ${type === 'dispatch' ? 'grid-cols-4' : 'grid-cols-5'} py-4 text-[11px] border-b border-slate-50 items-center group`}>
+              <span className="font-bold text-slate-400">{log.date.split('/')[0]}/{log.date.split('/')[1]}</span>
+              {type === 'dispatch' ? (
+                <>
+                  <span className="text-center text-slate-400 font-bold">{log.planned}</span>
+                  <span className={`text-center font-black ${dispatchOk ? 'text-emerald-600' : 'text-rose-500'}`}>{log.dispatched}</span>
+                </>
+              ) : (
+                <>
+                  <span className={`text-center font-black ${Number(log.breakdowns) === 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                    {log.breakdowns ?? '-'}
+                  </span>
+                  <span className={`text-center font-bold ${minorColor(log.pbrDelay, deptLabels?.delay1Type)}`}>
+                    {minorFmt(log.pbrDelay, deptLabels?.delay1Unit)}
+                  </span>
+                  <span className={`text-center font-bold ${minorColor(log.qcDelay, deptLabels?.delay2Type)}`}>
+                    {minorFmt(log.qcDelay, deptLabels?.delay2Unit)}
+                  </span>
+                </>
+              )}
+              <div className="text-right">
+                <button
+                  onClick={() => setDeleteConfig({ isOpen: true, type: type, index: i, rawDate: log.rawDate })}
+                  className="opacity-0 group-hover:opacity-100 p-1 text-rose-400 hover:bg-rose-50 rounded transition-all"
+                >
+                  <Trash2 size={12}/>
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     ))}
   </div>

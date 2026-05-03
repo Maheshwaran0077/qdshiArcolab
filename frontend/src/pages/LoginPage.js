@@ -22,16 +22,31 @@ const LoginPage = () => {
       
       // CRITICAL: Make sure we store the department so App.js routes work!
       const userData = {
-        _id: res.data._id, // Add ID
-        role: res.data.role,
-        department: res.data.department, // This must come from backend
-        name: res.data.name
+        _id:        res.data._id,
+        role:       res.data.role,
+        department: res.data.department,
+        name:       res.data.name,
+        employeeId: res.data.employeeId || '',
       };
 
       localStorage.setItem('userInfo', JSON.stringify(userData));
-      
-      // This triggers the Navbar and App.js to update immediately
       window.dispatchEvent(new Event("storage"));
+
+      // Log the login event (excluding superadmin)
+      if (res.data.role !== 'superadmin') {
+        fetch('http://localhost:5000/api/loginlog', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId:  res.data._id,
+            empId:   res.data.employeeId || '',
+            empName: res.data.name,
+            role:    res.data.role,
+            dept:    res.data.department || '',
+            action:  'login',
+          }),
+        }).catch(() => {});
+      }
 
       // REDIRECT LOGIC
       if (res.data.role === 'superadmin') {

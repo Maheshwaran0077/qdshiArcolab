@@ -30,6 +30,21 @@ const Navbar = () => {
   }
 
   const handleLogout = () => {
+    // Log the logout event (excluding superadmin)
+    if (user && user.role !== 'superadmin') {
+      fetch('http://localhost:5000/api/loginlog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId:  user._id  || '',
+          empId:   user.employeeId || '',
+          empName: user.name || '',
+          role:    user.role || '',
+          dept:    user.department || '',
+          action:  'logout',
+        }),
+      }).catch(() => {});
+    }
     localStorage.removeItem('userInfo');
     window.dispatchEvent(new Event("storage"));
     navigate('/login');

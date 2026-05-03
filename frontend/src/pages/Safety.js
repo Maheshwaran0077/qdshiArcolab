@@ -1,7 +1,9 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import {
-  ChevronLeft, ChevronRight, Star, Maximize2, X, ShieldAlert, AlertTriangle, CheckCircle
+  ChevronLeft, ChevronRight, Star, Maximize2, X, ShieldAlert, AlertTriangle, CheckCircle, Download
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -11,6 +13,7 @@ import CircularTracker from '../components/CircularTracker';
 import { dashboardMetrics as initialData } from '../dashboardData';
 
 const API_BASE_URL = 'http://localhost:5000/api/metrics';
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const DEPT_FULL = { fg: 'Finished Good Material Warehouse', pm: 'Packing Material Warehouse', rm: 'Raw Material Warehouse' };
 
@@ -21,9 +24,8 @@ const SafetyPage = () => {
   const user = JSON.parse(localStorage.getItem('userInfo'));
   const isSuperAdmin = user?.role === 'superadmin';
   const isSupervisor = user?.role === 'supervisor';
-  const userDept = user?.department?.toUpperCase() || "";
-  const isSafetySupervisor = isSupervisor && (userDept.includes('SAFETY') || userDept === 'S');
-  const canUpdate = isSafetySupervisor || isSuperAdmin;
+  const canUpdate = isSupervisor || isSuperAdmin;
+  const reportRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(initialData);
@@ -37,9 +39,17 @@ const SafetyPage = () => {
   const [peopleAffected, setPeopleAffected] = useState(0);
   const [severity, setSeverity] = useState("Low");
 
+  const [timeLock, setTimeLock] = useState(null);
   const [viewDate, setViewDate] = useState(new Date());
   const viewMonthName = viewDate.toLocaleString('default', { month: 'long' }).toUpperCase();
   const viewYear = viewDate.getFullYear();
+
+  useEffect(() => {
+    fetch(`${API}/api/timelock/${dept || 'fg'}/${shift || '1'}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setTimeLock(d))
+      .catch(() => {});
+  }, [shift, dept]);
 
   const handleMonthChange = (offset) => {
     const newDate = new Date(viewDate);
@@ -152,7 +162,7 @@ const SafetyPage = () => {
       const res = await fetch(`${API_BASE_URL}/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ letter: 'S', shift: shift || '1', dept: dept || 'fg', name: 'Safety', issueLogs: updatedLogs })
+        body: JSON.stringify({ letter: 'S', shift: shift || '1', dept: dept || 'fgmw', name: 'Safety', issueLogs: updatedLogs, empId: user?.employeeId, empName: user?.name })
       });
       if (res.ok) {
         const saved = await res.json();
@@ -163,24 +173,59 @@ const SafetyPage = () => {
         setNumUnsafeActs(0);
         setPeopleAffected(0);
         setSeverity("Low");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Save failed — check time lock or connection');
       }
     } catch (e) { alert("Sync failed."); }
+  };
+
+  const downloadPDF = async () => {
+    if (!reportRef.current) return;
+    const canvas = await html2canvas(reportRef.current, { scale: 1.5, useCORS: true, backgroundColor: '#F0F4F8' });
+    const img = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('l', 'mm', 'a4');
+    const pw = pdf.internal.pageSize.getWidth();
+    pdf.addImage(img, 'PNG', 0, 0, pw, (canvas.height * pw) / canvas.width);
+    pdf.save(`Safety_Shift${shift}_${dept}_${viewMonthName}_${viewYear}.pdf`);
   };
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-white text-orange-600 font-black uppercase tracking-widest italic">Arcolab Safety Sync...</div>;
 
   return (
-    <div className="min-h-screen bg-[#F0F4F8] text-[#334155] font-sans flex flex-col p-4">
+    <div ref={reportRef} className="min-h-screen bg-[#F0F4F8] text-[#334155] font-sans flex flex-col p-4">
 
       <nav className="flex justify-between items-center mb-4 px-4">
         <button onClick={() => navigate('/')} className="flex items-center gap-1 text-[#475569] font-bold text-xs uppercase hover:text-orange-600 transition-all">
           <ChevronLeft size={20} /> BACK
         </button>
-        {canUpdate && (
-          <button onClick={() => setIsModalOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider shadow-lg transition-all active:scale-95">
-            UPDATE {viewMonthName} SAFETY LOGS
+        <div className="flex gap-2 items-center">
+          {timeLock?.enabled && (
+            <span className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] font-bold text-amber-700">
+              ⏰ Save window: {timeLock.startTime} – {timeLock.endTime}
+            </span>
+          )}
+          <button onClick={downloadPDF}
+            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all">
+            <Download size={13} /> PDF
           </button>
-        )}
+          <button
+            onClick={() => {
+              const headers = ['Date', 'Safety Incidents', 'Near Miss', 'Unsafe Acts', 'People Affected', 'Severity'];
+              const rows = sData.issueLogs.map(l => [l.date || l.rawDate, l.numSafetyIncidents, l.numNearMiss, l.numUnsafeActs, l.peopleAffected, l.severity]);
+              const csv = [headers, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+              const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+              a.download = `Safety_Shift${shift}_${dept}.csv`; a.click();
+            }}
+            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all">
+            <Download size={13} /> CSV
+          </button>
+          {canUpdate && (
+            <button onClick={() => setIsModalOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider shadow-lg transition-all active:scale-95">
+              UPDATE {viewMonthName} SAFETY LOGS
+            </button>
+          )}
+        </div>
       </nav>
 
       <div className="px-4 mb-4">
@@ -390,7 +435,12 @@ const SafetyPage = () => {
             </div>
 
             <div className="space-y-4">
-              <InputField label="Date" type="date" value={customDate} onChange={(e)=>setCustomDate(e.target.value)} />
+              <InputField label="Date" type="date" value={customDate}
+                onChange={(e) => setCustomDate(e.target.value)}
+                max={user?.role === 'supervisor' ? new Date().toISOString().split('T')[0] : undefined}
+                readOnly={user?.role === 'supervisor'}
+                title={user?.role === 'supervisor' ? 'Supervisors can only update today' : ''}
+              />
 
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2">No. of Safety Incidents</label>

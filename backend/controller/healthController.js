@@ -1,37 +1,11 @@
 const HealthModel  = require('../models/Health');
-const HealthCutoff = require('../models/HealthCutoff');
-
-// --- helpers ---
-
-const getCutoffDoc = async () => {
-  let doc = await HealthCutoff.findOne();
-  if (!doc) doc = await HealthCutoff.create({ cutoffTime: '17:00', overrides: [] });
-  return doc;
-};
-
-const isAfterCutoff = (cutoffTime) => {
-  const [cutH, cutM] = cutoffTime.split(':').map(Number);
-  const now = new Date();
-  return now.getHours() > cutH || (now.getHours() === cutH && now.getMinutes() >= cutM);
-};
-
-const hasOverride = (overrides, date, month, year, dept, shift) =>
-  overrides.some(
-    o =>
-      o.date  === Number(date)  &&
-      o.month === month         &&
-      o.year  === Number(year)  &&
-      o.dept  === dept          &&
-      o.shift === shift,
-  );
-
-// --- controllers ---
+const { checkTimeLock, createAuditLog, notifyHod } = require('../utils/saveHelpers');
 
 const getHealthData = async (req, res) => {
   try {
     const { month, year, dept, shift } = req.query;
     const record = await HealthModel.findOne({
-      month, year: Number(year), dept: dept || 'fg', shift: shift || '1',
+      month, year: Number(year), dept: dept || 'fgmw', shift: shift || '1',
     });
     if (!record) return res.status(200).json({ days: [] });
     res.status(200).json(record);
@@ -45,23 +19,21 @@ const updateHealthDay = async (req, res) => {
     const {
       month, year, dept, shift, date,
       status, keypoints, attendance, attendees, totalStrength,
-      userRole,
+      userRole, empId, empName,
     } = req.body;
 
     if (!month || !year || !date || !status) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    const d = dept  || 'fg';
+    const d = dept  || 'fgmw';
     const s = shift || '1';
 
-    // Cutoff check: after cutoff time, non-superadmin cannot update any entry without override
+    // Timelock check — superadmin always bypasses
     if (userRole !== 'superadmin') {
-      const cutoffDoc = await getCutoffDoc();
-      if (isAfterCutoff(cutoffDoc.cutoffTime) && !hasOverride(cutoffDoc.overrides, date, month, year, d, s)) {
-        return res.status(403).json({
-          message: `Cutoff time (${cutoffDoc.cutoffTime}) has passed. Contact Super Admin for access.`,
-        });
+      const lockCheck = await checkTimeLock(d, s);
+      if (!lockCheck.allowed) {
+        return res.status(403).json({ message: lockCheck.message });
       }
     }
 
@@ -89,6 +61,14 @@ const updateHealthDay = async (req, res) => {
     };
 
     await record.save();
+
+    // Async notifications & audit (non-blocking)
+    if (empId && empName) {
+      const today = new Date().toISOString().split('T')[0];
+      createAuditLog({ date: today, empId, empName, dept: d, shift: s, module: 'H', deptType: 'qdsh' });
+      notifyHod({ empId, empName, dept: d, shift: s, module: 'H', deptType: 'qdsh', date: today });
+    }
+
     res.status(200).json({ message: 'Updated successfully', record });
   } catch (error) {
     if (error.name === 'ValidationError') {
@@ -99,61 +79,4 @@ const updateHealthDay = async (req, res) => {
   }
 };
 
-const getCutoffSettings = async (req, res) => {
-  try {
-    const doc = await getCutoffDoc();
-    res.status(200).json({ cutoffTime: doc.cutoffTime, overrides: doc.overrides });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-const setCutoffTime = async (req, res) => {
-  try {
-    const { cutoffTime, userRole } = req.body;
-    if (userRole !== 'superadmin') return res.status(403).json({ message: 'Super Admin only' });
-    if (!/^\d{2}:\d{2}$/.test(cutoffTime)) return res.status(400).json({ message: 'Invalid time format. Use HH:MM' });
-    const doc = await getCutoffDoc();
-    doc.cutoffTime = cutoffTime;
-    await doc.save();
-    res.status(200).json({ message: 'Cutoff time updated', cutoffTime: doc.cutoffTime });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-const grantOverride = async (req, res) => {
-  try {
-    const { userRole, date, month, year, dept, shift } = req.body;
-    if (userRole !== 'superadmin') return res.status(403).json({ message: 'Super Admin only' });
-    const d = dept || 'fg';
-    const s = shift || '1';
-    const doc = await getCutoffDoc();
-    if (!hasOverride(doc.overrides, date, month, year, d, s)) {
-      doc.overrides.push({ date: Number(date), month, year: Number(year), dept: d, shift: s });
-      await doc.save();
-    }
-    res.status(200).json({ message: 'Override granted' });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-const revokeOverride = async (req, res) => {
-  try {
-    const { userRole, date, month, year, dept, shift } = req.body;
-    if (userRole !== 'superadmin') return res.status(403).json({ message: 'Super Admin only' });
-    const d = dept || 'fg';
-    const s = shift || '1';
-    const doc = await getCutoffDoc();
-    doc.overrides = doc.overrides.filter(
-      o => !(o.date === Number(date) && o.month === month && o.year === Number(year) && o.dept === d && o.shift === s),
-    );
-    await doc.save();
-    res.status(200).json({ message: 'Override revoked' });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-module.exports = { getHealthData, updateHealthDay, getCutoffSettings, setCutoffTime, grantOverride, revokeOverride };
+module.exports = { getHealthData, updateHealthDay };
