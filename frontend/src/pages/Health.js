@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { Plus, X, Save, ChevronLeft, ChevronRight, Lock, CheckCircle2, ShieldAlert, Clock, Download } from 'lucide-react';
 import axios from 'axios';
 
@@ -17,8 +19,10 @@ const Health = () => {
   const isHOD        = user.role === 'hod';
   const isSupervisor = user.role === 'supervisor';
   const canUpdate    = isSupervisor || isSuperAdmin;
+  const reportRef    = useRef(null);
 
   const [currentMonthIndex, setCurrentMonthIndex] = useState(new Date().getMonth());
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const currentMonthName = MONTHS[currentMonthIndex];
 
   const [notification, setNotification]       = useState({ show: false, message: '', type: '' });
@@ -49,7 +53,7 @@ const Health = () => {
     const fetchMonthData = async () => {
       try {
         const { data } = await axios.get('http://localhost:5000/api/health', {
-          params: { month: currentMonthName, year: 2026, dept: dept || 'fg', shift: shift || '1' },
+          params: { month: currentMonthName, year: currentYear, dept: dept || 'fg', shift: shift || '1' },
         });
         if (data?.days?.length > 0) {
           setAllMonthsData(prev => ({ ...prev, [currentMonthName]: data.days }));
@@ -94,7 +98,7 @@ const Health = () => {
 
   const isCurrentDay = (dayDate) => {
     const now = new Date();
-    return dayDate === now.getDate() && currentMonthName === MONTHS[now.getMonth()] && 2026 === now.getFullYear();
+    return dayDate === now.getDate() && currentMonthName === MONTHS[now.getMonth()] && currentYear === now.getFullYear();
   };
 
   const calcAttendance = (attendees, totalStrength) => {
@@ -111,7 +115,7 @@ const Health = () => {
       ? calcAttendance(formData.attendees, formData.totalStrength)
       : null;
     const payload = {
-      month: currentMonthName, year: 2026,
+      month: currentMonthName, year: currentYear,
       dept: dept || 'fgmw', shift: shift || '1',
       date: selectedDay.date, status: formData.status,
       keypoints: formData.keypoints,
@@ -175,8 +179,18 @@ const Health = () => {
     const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `Health_${dept}_Shift${shift}_${currentMonthName}_2026.csv`;
+    a.download = `Health_${dept}_Shift${shift}_${currentMonthName}_${currentYear}.csv`;
     a.click();
+  };
+
+  const downloadPDF = async () => {
+    if (!reportRef.current) return;
+    const canvas = await html2canvas(reportRef.current, { scale: 1.5, useCORS: true, backgroundColor: '#f8fafc' });
+    const img = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('l', 'mm', 'a4');
+    const pw = pdf.internal.pageSize.getWidth();
+    pdf.addImage(img, 'PNG', 0, 0, pw, (canvas.height * pw) / canvas.width);
+    pdf.save(`Health_${dept}_Shift${shift}_${currentMonthName}_${currentYear}.pdf`);
   };
 
   const isMeeting           = formData.status === 'meeting';
@@ -185,7 +199,7 @@ const Health = () => {
     (isMeeting && (!formData.attendees || !formData.totalStrength || !formData.keypoints.trim()));
 
   return (
-    <div className="p-6 bg-[#f8fafc] min-h-screen font-sans text-slate-900">
+    <div ref={reportRef} className="p-6 bg-[#f8fafc] min-h-screen font-sans text-slate-900">
 
       {/* Notification */}
       {notification.show && (
@@ -222,14 +236,21 @@ const Health = () => {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={downloadPDF}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs shadow-sm transition-all">
+            <Download size={14}/> PDF
+          </button>
           <button onClick={downloadCSV}
             className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs shadow-sm transition-all">
             <Download size={14}/> CSV
           </button>
           <div className="flex items-center bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 p-1.5 transition-all hover:shadow-2xl">
             <button onClick={() => setCurrentMonthIndex(prev => prev === 0 ? 11 : prev - 1)} className="p-2.5 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-slate-900 transition-all"><ChevronLeft size={20}/></button>
-            <span className="px-10 font-black uppercase tracking-widest text-xs w-44 text-center">{currentMonthName}</span>
+            <span className="px-6 font-black uppercase tracking-widest text-xs text-center">
+              {currentMonthName}
+              <span className="block text-[9px] font-bold text-slate-400 tracking-widest normal-case">{currentYear}</span>
+            </span>
             <button onClick={() => setCurrentMonthIndex(prev => prev === 11 ? 0 : prev + 1)} className="p-2.5 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-slate-900 transition-all"><ChevronRight size={20}/></button>
           </div>
         </div>

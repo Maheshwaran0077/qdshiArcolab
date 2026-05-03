@@ -1,5 +1,7 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useParams as useRParams } from 'react-router-dom';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { ChevronLeft, ChevronRight, Star, Activity, Clock, Calendar, TrendingUp, Trash2, AlertCircle, Download } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid, YAxis, Legend, Tooltip } from 'recharts';
 import CircularTracker from '../components/CircularTracker';
@@ -108,6 +110,7 @@ const DeliveryPage = () => {
   const isEmployee = user?.role === 'employee';
   const isHOD = user?.role === 'hod';
   const canEdit = !isEmployee && !isHOD;
+  const reportRef = useRef(null);
 
   const activeShift = paramShift || user?.shift || '1';
   const activeDept = paramDept || 'fg';
@@ -307,10 +310,20 @@ const DeliveryPage = () => {
       return { name: m.monthName.slice(0, 3), pass: passCount, fail: m.logs.length - passCount };
     }), [allYearLogs]);
 
+  const downloadPDF = async () => {
+    if (!reportRef.current) return;
+    const canvas = await html2canvas(reportRef.current, { scale: 1.5, useCORS: true, backgroundColor: '#F8FAFC' });
+    const img = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('l', 'mm', 'a4');
+    const pw = pdf.internal.pageSize.getWidth();
+    pdf.addImage(img, 'PNG', 0, 0, pw, (canvas.height * pw) / canvas.width);
+    pdf.save(`Delivery_Shift${activeShift}_${activeDept}_${MONTHS[viewMonth]}_${viewYear}.pdf`);
+  };
+
   if (loading) return <div className="h-screen flex items-center justify-center font-black text-emerald-500 animate-pulse bg-slate-50">LOADING SYSTEM...</div>;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] font-sans flex flex-col text-slate-900">
+    <div ref={reportRef} className="min-h-screen bg-[#F8FAFC] font-sans flex flex-col text-slate-900">
       {/* Custom Styled Alert Popup */}
       {deleteConfig.isOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -358,6 +371,10 @@ const DeliveryPage = () => {
               ⏰ Save window: {timeLock.startTime} – {timeLock.endTime}
             </span>
           )}
+          <button onClick={downloadPDF}
+            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all">
+            <Download size={13} /> PDF
+          </button>
           <button
             onClick={() => {
               const headers = ['Date', 'Planned', 'Dispatched', 'Breakdowns', 'Delay 1', 'Delay 2'];
