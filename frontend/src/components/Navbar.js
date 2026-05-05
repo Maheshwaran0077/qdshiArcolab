@@ -3,6 +3,8 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { UserCircle, LogOut, LayoutDashboard, Settings2 } from 'lucide-react';
 import logo from '../assest/arcolabLogo.jpg';
 
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 const DEPT_SHORT = { fg: 'FG Warehouse', pm: 'PM Warehouse', rm: 'RM Warehouse' };
 const MODULE_LABEL = { q: 'Quality', d: 'Delivery', s: 'Safety', h: 'Health' };
 
@@ -32,7 +34,7 @@ const Navbar = () => {
   const handleLogout = () => {
     // Log the logout event (excluding superadmin)
     if (user && user.role !== 'superadmin') {
-      fetch('http://localhost:5000/api/loginlog', {
+      fetch(`${API}/api/loginlog`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -16,7 +16,7 @@ import CircularTracker from '../components/CircularTracker';
 import { dashboardMetrics as initialData } from '../dashboardData';
 
 const MySwal = withReactContent(Swal);
-const API_BASE_URL = 'http://localhost:5000/api/metrics';
+const API_BASE_URL = `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/metrics`;
 const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const DEPT_FULL = { fg: 'Finished Good Material Warehouse', pm: 'Packing Material Warehouse', rm: 'Raw Material Warehouse' };
 

@@ -247,9 +247,9 @@ const SuperAdminDashboard = () => {
     setLoading(true);
     try {
       const [empRes, supRes, hodRes] = await Promise.all([
-        axios.get('http://localhost:5000/api/users/all/employee'),
-        axios.get('http://localhost:5000/api/users/all/supervisor'),
-        axios.get('http://localhost:5000/api/users/all/hod'),
+        axios.get(`${API}/api/users/all/employee`),
+        axios.get(`${API}/api/users/all/supervisor`),
+        axios.get(`${API}/api/users/all/hod`),
       ]);
       setEmployees(empRes.data);
       setSupervisors(supRes.data);
@@ -316,7 +316,7 @@ const SuperAdminDashboard = () => {
     if (!raw) { showNotify('No changes to save', 'error'); return; }
     const updates = Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== ''));
     try {
-      const res = await axios.put(`http://localhost:5000/api/users/update/${id}`, updates);
+      const res = await axios.put(`${API}/api/users/update/${id}`, updates);
       if (res.data.success) {
         showNotify(`${name} updated!`, 'success');
         setEditData(prev => { const s = { ...prev }; delete s[id]; return s; });
@@ -332,7 +332,7 @@ const SuperAdminDashboard = () => {
 
   const handleDeleteConfirm = async () => {
     try {
-      await axios.delete(`http://localhost:5000/api/users/delete/${deleteModal.userId}`);
+      await axios.delete(`${API}/api/users/delete/${deleteModal.userId}`);
       showNotify(`${deleteModal.userName} removed`, 'success');
       setDeleteModal({ open: false, userId: null, userName: '' });
       fetchAll();
@@ -359,7 +359,7 @@ const SuperAdminDashboard = () => {
     const shift = role === 'supervisor' ? arrToStr(formData.selectedShifts) : 'NONE';
 
     try {
-      await axios.post('http://localhost:5000/api/users/register', {
+      await axios.post(`${API}/api/users/register`, {
         name: formData.name, dob: formData.dob,
         employeeId: formData.employeeId, gmail: formData.gmail,
         password: formData.password, role, department, shift,

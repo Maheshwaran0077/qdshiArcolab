@@ -54,7 +54,7 @@ const Health = () => {
   useEffect(() => {
     const fetchMonthData = async () => {
       try {
-        const { data } = await axios.get('http://localhost:5000/api/health', {
+        const { data } = await axios.get(`${API}/api/health`, {
           params: { month: currentMonthName, year: currentYear, dept: dept || 'fg', shift: shift || '1' },
         });
         if (data?.days?.length > 0) {
@@ -129,7 +129,7 @@ const Health = () => {
       empName: user?.name,
     };
     try {
-      await axios.post('http://localhost:5000/api/health/update', payload);
+      await axios.post(`${API}/api/health/update`, payload);
       const updated = allMonthsData[currentMonthName].map(item =>
         item.date === selectedDay.date
           ? { ...item, status: formData.status, keypoints: formData.keypoints,
