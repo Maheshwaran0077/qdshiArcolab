@@ -201,7 +201,7 @@ const Health = () => {
     (isMeeting && (!formData.attendees || !formData.totalStrength || !formData.keypoints.trim()));
 
   return (
-    <div ref={reportRef} className="p-6 bg-[#f8fafc] min-h-screen font-sans text-slate-900">
+    <div className="min-h-screen bg-[#f8fafc] font-sans text-slate-900 flex flex-col">
 
       {/* Notification */}
       {notification.show && (
@@ -222,59 +222,57 @@ const Health = () => {
         </div>
       )}
 
-      <div className="mb-4">
-        <button onClick={() => navigate('/')} className="flex items-center gap-1 text-[#475569] font-bold text-xs uppercase hover:text-emerald-600 transition-all">
-          <ChevronLeft size={20}/> BACK TO DASHBOARD
+      {/* Clean sticky nav */}
+      <nav className="flex justify-between items-center px-4 sm:px-6 py-3 bg-[#f8fafc] border-b border-slate-200 sticky top-0 z-50">
+        <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-[#475569] font-bold text-xs uppercase hover:text-emerald-600 transition-colors">
+          <ChevronLeft size={18}/> <span className="hidden sm:inline">Back</span>
         </button>
-      </div>
+        <button onClick={downloadCSV}
+          className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-full font-bold text-xs shadow-sm transition-all">
+          <Download size={13}/> <span className="hidden sm:inline">CSV</span>
+        </button>
+      </nav>
 
-      <header className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-900">Health</h1>
-          <div className="flex items-center gap-2 mt-1">
-            <span className={`h-2 w-2 rounded-full animate-pulse ${canUpdate ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
-            <p className="text-slate-500 font-bold uppercase tracking-[0.15em] text-[10px]">
-              {isSuperAdmin ? 'Administrative Master' : isHOD ? 'HOD Audit Mode' : isSupervisor ? 'Supervisor Entry' : 'View Only Mode'}
-            </p>
+      {/* Title card with month nav on right */}
+      <div className="px-4 sm:px-6 mb-4 mt-1">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Health — Shift {shift}</h1>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{DEPT_FULL[dept] || dept?.toUpperCase()}</p>
           </div>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <button onClick={downloadPDF}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs shadow-sm transition-all">
-            <Download size={14}/> PDF
-          </button>
-          <button onClick={downloadCSV}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs shadow-sm transition-all">
-            <Download size={14}/> CSV
-          </button>
-          <div className="flex items-center bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 p-1.5 transition-all hover:shadow-2xl">
-            <button onClick={() => setCurrentMonthIndex(prev => prev === 0 ? 11 : prev - 1)} className="p-2.5 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-slate-900 transition-all"><ChevronLeft size={20}/></button>
-            <span className="px-6 font-black uppercase tracking-widest text-xs text-center">
-              {currentMonthName}
-              <span className="block text-[9px] font-bold text-slate-400 tracking-widest normal-case">{currentYear}</span>
-            </span>
-            <button onClick={() => setCurrentMonthIndex(prev => prev === 11 ? 0 : prev + 1)} className="p-2.5 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-slate-900 transition-all"><ChevronRight size={20}/></button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Shift time badge */}
+            <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-full">
+              <Clock size={13} className="text-blue-500 shrink-0"/>
+              <div>
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Shift {shift}</p>
+                <p className="text-[11px] font-black text-slate-700">{shift === '1' ? '06:00 – 14:00' : '14:00 – 22:00'}</p>
+              </div>
+            </div>
+            {/* Month navigation */}
+            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-full p-1">
+              <button onClick={() => setCurrentMonthIndex(prev => prev === 0 ? 11 : prev - 1)} className="p-1.5 hover:bg-white rounded-full text-slate-400 hover:text-slate-800 transition-all"><ChevronLeft size={16}/></button>
+              <span className="px-3 font-black uppercase tracking-widest text-[10px] text-center text-slate-700 min-w-[90px]">
+                {currentMonthName.slice(0,3)} <span className="text-slate-400">{currentYear}</span>
+              </span>
+              <button onClick={() => setCurrentMonthIndex(prev => prev === 11 ? 0 : prev + 1)} className="p-1.5 hover:bg-white rounded-full text-slate-400 hover:text-slate-800 transition-all"><ChevronRight size={16}/></button>
+            </div>
+            {/* TimeLock */}
+            {timeLock?.enabled && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-full">
+                <span className="text-base">⏰</span>
+                <div>
+                  <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest">Save Window</p>
+                  <p className="text-[11px] font-black text-amber-800">{timeLock.startTime} – {timeLock.endTime}</p>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      </header>
-
-      {/* Time lock display */}
-      {timeLock?.enabled && (
-        <div className="mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-amber-600">
-          <Clock size={13}/>
-          Save Window: {timeLock.startTime} – {timeLock.endTime}
-        </div>
-      )}
-
-      <div className="mb-6">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 text-center">
-          <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Health — Shift {shift}</h1>
-          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">{DEPT_FULL[dept] || dept?.toUpperCase()}</p>
-          <p className="text-slate-500 text-sm font-medium uppercase tracking-widest mt-0.5">Arcolab Continuous Improvement System</p>
         </div>
       </div>
 
       {/* GRID */}
+      <div ref={reportRef} className="flex-1 px-4 sm:px-6 pb-6">
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-5">
         {allMonthsData[currentMonthName].map((item) => {
           const isTimeLocked = isCurrentDay(item.date) && isOutsideTimeLock();
@@ -326,6 +324,17 @@ const Health = () => {
           );
         })}
       </div>
+
+      </div>{/* end grid wrapper */}
+
+      {/* Floating PDF button */}
+      <button
+        onClick={downloadPDF}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full shadow-2xl shadow-emerald-200 flex items-center justify-center z-[90] active:scale-95 transition-all"
+        title="Download PDF"
+      >
+        <Download size={22} />
+      </button>
 
       {/* MODAL */}
       {isModalOpen && canUpdate && (

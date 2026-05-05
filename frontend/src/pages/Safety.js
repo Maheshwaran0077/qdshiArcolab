@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import {
-  ChevronLeft, ChevronRight, Star, Maximize2, X, ShieldAlert, AlertTriangle, CheckCircle, Download
+  ChevronLeft, ChevronRight, Star, Maximize2, X, ShieldAlert, AlertTriangle, CheckCircle, Download, Clock
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -195,22 +195,13 @@ const SafetyPage = () => {
   if (loading) return <div className="h-screen flex items-center justify-center bg-white text-orange-600 font-black uppercase tracking-widest italic">Arcolab Safety Sync...</div>;
 
   return (
-    <div ref={reportRef} className="min-h-screen bg-[#F0F4F8] text-[#334155] font-sans flex flex-col p-4">
+    <div ref={reportRef} className="min-h-screen bg-[#F0F4F8] text-[#334155] font-sans flex flex-col">
 
-      <nav className="flex justify-between items-center mb-4 px-4">
-        <button onClick={() => navigate('/')} className="flex items-center gap-1 text-[#475569] font-bold text-xs uppercase hover:text-orange-600 transition-all">
-          <ChevronLeft size={20} /> BACK
+      <nav className="flex justify-between items-center px-4 sm:px-6 py-3 bg-[#F0F4F8] border-b border-slate-200 sticky top-0 z-50">
+        <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-[#475569] font-bold text-xs uppercase hover:text-orange-600 transition-colors">
+          <ChevronLeft size={18} /> <span className="hidden sm:inline">Back</span>
         </button>
         <div className="flex gap-2 items-center">
-          {timeLock?.enabled && (
-            <span className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] font-bold text-amber-700">
-              ⏰ Save window: {timeLock.startTime} – {timeLock.endTime}
-            </span>
-          )}
-          <button onClick={downloadPDF}
-            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all">
-            <Download size={13} /> PDF
-          </button>
           <button
             onClick={() => {
               const headers = ['Date', 'Safety Incidents', 'Near Miss', 'Unsafe Acts', 'People Affected', 'Severity'];
@@ -219,34 +210,48 @@ const SafetyPage = () => {
               const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
               a.download = `Safety_Shift${shift}_${dept}.csv`; a.click();
             }}
-            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all">
-            <Download size={13} /> CSV
+            className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-full font-bold text-xs shadow-sm transition-all">
+            <Download size={13} /> <span className="hidden sm:inline">CSV</span>
           </button>
           {canUpdate && (
-            <button onClick={() => setIsModalOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider shadow-lg transition-all active:scale-95">
-              UPDATE {viewMonthName} SAFETY LOGS
+            <button onClick={() => setIsModalOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-5 sm:px-7 py-2 rounded-full text-[11px] font-black uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center gap-2">
+              <span className="hidden sm:inline">Update Logs</span><span className="sm:hidden">Update</span>
             </button>
           )}
         </div>
       </nav>
 
-      <div className="px-4 mb-4">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 text-center">
-          <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Safety — Shift {shift}</h1>
-          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">{DEPT_FULL[dept] || dept?.toUpperCase()}</p>
-          <p className="text-slate-500 text-sm font-medium uppercase tracking-widest mt-0.5">Arcolab Continuous Improvement System</p>
+      <div className="px-4 sm:px-6 mb-4 mt-1">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Safety — Shift {shift}</h1>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{DEPT_FULL[dept] || dept?.toUpperCase()}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-full">
+              <Clock size={13} className="text-blue-500 shrink-0" />
+              <div>
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Shift {shift}</p>
+                <p className="text-[11px] font-black text-slate-700">{shift === '1' ? '06:00 – 14:00' : '14:00 – 22:00'}</p>
+              </div>
+            </div>
+            {timeLock?.enabled && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-full">
+                <span className="text-base">⏰</span>
+                <div>
+                  <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest">Save Window</p>
+                  <p className="text-[11px] font-black text-amber-800">{timeLock.startTime} – {timeLock.endTime}</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      <main className="grid grid-cols-12 gap-5 flex-1 px-4 pb-4">
+      <main className="grid grid-cols-12 gap-5 flex-1 px-4 sm:px-6 pb-4">
 
         {/* Left Panel */}
-        <div className="col-span-12 lg:col-span-3 bg-white rounded-[2rem] shadow-sm border border-slate-100 p-6 flex flex-col items-center">
-          <div className="text-center mb-4">
-            <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Department</span>
-            <h1 className="text-3xl font-black text-[#1E293B] uppercase tracking-tighter">Safety</h1>
-          </div>
-
+        <div className="col-span-12 md:col-span-6 lg:col-span-3 bg-white rounded-[2rem] shadow-sm border border-slate-100 p-6 flex flex-col items-center">
           <div className="flex items-center justify-between w-full mb-6 bg-[#FFF7ED] px-4 py-2 rounded-full border border-orange-100">
             <button onClick={() => handleMonthChange(-1)} className="text-orange-500 hover:scale-110 transition"><ChevronLeft size={20}/></button>
             <span className="text-[11px] font-black text-orange-600 tracking-widest">{viewMonthName} {viewYear}</span>
@@ -296,7 +301,7 @@ const SafetyPage = () => {
         </div>
 
         {/* Center Panel — Log Records */}
-        <div className="col-span-12 lg:col-span-5 flex flex-col gap-5">
+        <div className="col-span-12 md:col-span-6 lg:col-span-5 flex flex-col gap-5">
           <ChartCard title={`${viewMonthName} LOG RECORDS`}>
             <div className="overflow-y-auto pr-2 custom-scrollbar flex-1 max-h-[360px]">
               <table className="w-full text-[10px] border-separate border-spacing-0">
@@ -381,7 +386,7 @@ const SafetyPage = () => {
         </div>
 
         {/* Right Panel — Trend Chart */}
-        <div className="col-span-12 lg:col-span-4 flex flex-col gap-5">
+        <div className="col-span-12 md:col-span-6 lg:col-span-4 flex flex-col gap-5">
           <ChartCard title="MONTHLY INCIDENT TREND">
             <div className="h-[240px] w-full mt-2">
               <ResponsiveContainer width="100%" height="100%">
@@ -422,6 +427,15 @@ const SafetyPage = () => {
           </div>
         </div>
       </main>
+
+      {/* Floating PDF button */}
+      <button
+        onClick={downloadPDF}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-orange-600 hover:bg-orange-700 text-white rounded-full shadow-2xl shadow-orange-200 flex items-center justify-center z-[90] active:scale-95 transition-all"
+        title="Download PDF"
+      >
+        <Download size={22} />
+      </button>
 
       {/* MODAL */}
       {isModalOpen && canUpdate && (

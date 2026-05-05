@@ -205,10 +205,20 @@ export default function Engineering() {
                 </button>
               ))}
             </div>
-            {timeLock?.enabled && (
-              <span className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] font-bold text-amber-700">
-                ⏰ Save window: {timeLock.startTime} – {timeLock.endTime}
+            <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Shift {shift}</span>
+              <span className="text-[10px] font-black text-slate-700">
+                {shift === '1' ? '06:00–14:00' : shift === '2' ? '14:00–22:00' : '22:00–06:00'}
               </span>
+            </div>
+            {timeLock?.enabled && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl">
+                <span className="text-sm">⏰</span>
+                <div>
+                  <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest leading-none">Save Window</p>
+                  <p className="text-[10px] font-black text-amber-800">{timeLock.startTime} – {timeLock.endTime}</p>
+                </div>
+              </div>
             )}
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
               readOnly={isSupervisor} disabled={isSupervisor}
