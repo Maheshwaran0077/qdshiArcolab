@@ -16,7 +16,8 @@ import CircularTracker from '../components/CircularTracker';
 import { dashboardMetrics as initialData } from '../dashboardData';
 
 const MySwal = withReactContent(Swal);
-const API_BASE_URL = 'http://localhost:5000/api/metrics';
+const API_BASE_URL = `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/metrics`;
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const DEPT_FULL = { fg: 'Finished Good Material Warehouse', pm: 'Packing Material Warehouse', rm: 'Raw Material Warehouse' };
 
 const Toast = Swal.mixin({
@@ -41,21 +42,30 @@ const QualityPage = () => {
 
   const isSuperAdmin = user?.role === 'superadmin';
   const isSupervisor = user?.role === 'supervisor';
-  const userDept = user?.department?.toUpperCase() || "";
-  const isQualitySupervisor = isSupervisor && (userDept.includes('QUALITY') || userDept === 'Q');
-  const canUpdate = isQualitySupervisor || isSuperAdmin;
+  const userDepts = (user?.department || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  const isAssignedDept = isSuperAdmin || userDepts.includes((dept || '').toLowerCase());
+  const canUpdate = (isSupervisor && isAssignedDept) || isSuperAdmin;
 
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(initialData);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState("Target Met");
   const [deviationType, setDeviationType] = useState("");
+  const [customReason, setCustomReason] = useState("");
   const [viewDate, setViewDate] = useState(new Date());
   const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [staffLogs, setStaffLogs] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
   const [tableSyncing, setTableSyncing] = useState({ staff: false, activity: false });
+  const [timeLock, setTimeLock] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API}/api/timelock/${dept || 'fgmw'}/${shift || '1'}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setTimeLock(d))
+      .catch(() => {});
+  }, [shift, dept]);
 
   const viewMonthName = viewDate.toLocaleString('default', { month: 'long' }).toUpperCase();
   const viewYear = viewDate.getFullYear();
@@ -87,7 +97,7 @@ const QualityPage = () => {
         const res = await fetch(`${API_BASE_URL}/update`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...qData, shift: shift || '1', dept: dept || 'fg', issueLogs: updatedLogs })
+          body: JSON.stringify({ ...qData, shift: shift || '1', dept: dept || 'fgmw', issueLogs: updatedLogs, empId: user?.employeeId, empName: user?.name })
         });
         if (res.ok) {
           const saved = await res.json();
@@ -100,13 +110,14 @@ const QualityPage = () => {
 
   const handleUpdateStatus = async () => {
     if (!canUpdate) return;
+    const resolvedReason = selectedIssue === "Others" ? (customReason.trim() || "Others") : selectedIssue;
     let updatedLogs = Array.isArray(qData.issueLogs) ? [...qData.issueLogs] : [];
     const [y, m, d] = customDate.split('-');
     const newEntry = {
       date: `${d}/${m}/${y}`,
       rawDate: customDate,
-      reason: selectedIssue,
-      deviationType: selectedIssue === "Target Met" ? "" : deviationType,
+      reason: resolvedReason,
+      deviationType: resolvedReason === "Target Met" ? "" : deviationType,
       timestamp: new Date().toISOString()
     };
 
@@ -117,14 +128,18 @@ const QualityPage = () => {
       const res = await fetch(`${API_BASE_URL}/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...qData, shift: shift || '1', dept: dept || 'fg', issueLogs: updatedLogs })
+        body: JSON.stringify({ ...qData, shift: shift || '1', dept: dept || 'fgmw', issueLogs: updatedLogs, empId: user?.employeeId, empName: user?.name })
       });
       if (res.ok) {
         const saved = await res.json();
         setMetrics(prev => prev.map(m => m.letter === 'Q' ? { ...m, ...saved } : m));
         setIsModalOpen(false);
         setDeviationType("");
+        setCustomReason("");
         notifySuccess(`Shift ${shift} Updated`);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        notifyError(err.error || 'Save failed — check time lock or connection');
       }
     } catch (e) { notifyError("Sync failed"); }
   };
@@ -135,9 +150,10 @@ const QualityPage = () => {
       const res = await fetch(`${API_BASE_URL}/staff`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ letter: 'Q', shift: shift || '1', dept: dept || 'fg', logs: staffLogs }),
+        body: JSON.stringify({ letter: 'Q', shift: shift || '1', dept: dept || 'fgmw', logs: staffLogs, empId: user?.employeeId, empName: user?.name }),
       });
       if (res.ok) notifySuccess("Staff Logs Updated");
+      else { const e = await res.json().catch(() => ({})); notifyError(e.error || 'Staff save failed'); }
     } catch (e) { notifyError("Staff sync failed"); }
     finally { setTableSyncing(prev => ({ ...prev, staff: false })); }
   };
@@ -148,9 +164,10 @@ const QualityPage = () => {
       const res = await fetch(`${API_BASE_URL}/activity`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ letter: 'Q', shift: shift || '1', dept: dept || 'fg', logs: activityLogs }),
+        body: JSON.stringify({ letter: 'Q', shift: shift || '1', dept: dept || 'fgmw', logs: activityLogs, empId: user?.employeeId, empName: user?.name }),
       });
       if (res.ok) notifySuccess("Activity Logs Updated");
+      else { const e = await res.json().catch(() => ({})); notifyError(e.error || 'Activity save failed'); }
     } catch (e) { notifyError("Activity sync failed"); }
     finally { setTableSyncing(prev => ({ ...prev, activity: false })); }
   };
@@ -182,6 +199,20 @@ const QualityPage = () => {
       else setActivityLogs(prev => prev.filter((_, i) => i !== index));
       notifySuccess("Row removed");
     }
+  };
+
+  const downloadCSV = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const logs = Array.isArray(qData.issueLogs) ? qData.issueLogs : [];
+    const headers = ['Date', 'Reason', 'Deviation Type', 'Timestamp'];
+    const rows = logs
+      .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate))
+      .map(l => [l.date || l.rawDate, l.reason || '', l.deviationType || '', l.timestamp || '']);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `Quality_Shift${shift}_${dept}_${today}.csv`;
+    a.click();
   };
 
   const downloadPDF = async () => {
@@ -293,24 +324,41 @@ const QualityPage = () => {
 
   return (
     <div className="min-h-screen bg-[#F0F4F8] text-[#334155] font-sans flex flex-col">
-      <nav className="flex flex-col sm:flex-row justify-between items-center px-4 sm:px-6 py-4 bg-[#F0F4F8] gap-4 sticky top-0 z-50">
-        <button onClick={() => navigate('/')} className="flex items-center gap-1 text-[#475569] font-bold text-xs uppercase self-start sm:self-center hover:text-emerald-600 transition-colors">
-          <ChevronLeft size={20} /> BACK
+      <nav className="flex justify-between items-center px-4 sm:px-6 py-3 bg-[#F0F4F8] sticky top-0 z-50">
+        <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-[#475569] font-bold text-xs uppercase hover:text-emerald-600 transition-colors">
+          <ChevronLeft size={18} /> <span className="hidden sm:inline">Back</span>
         </button>
-        {canUpdate && (
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center justify-center gap-2"
-          >
-            <Edit3 size={14} /> UPDATE {viewMonthName.split(' ')[0]} LOGS
+        <div className="flex items-center gap-2">
+          <button onClick={downloadCSV}
+            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-full font-bold text-xs shadow-sm transition-all">
+            <Download size={13}/> <span className="hidden sm:inline">CSV</span>
           </button>
-        )}
+          {canUpdate && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 sm:px-7 py-2 rounded-full text-[11px] font-black uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center gap-2"
+            >
+              <Edit3 size={13} /> <span className="hidden sm:inline">Update Logs</span><span className="sm:hidden">Update</span>
+            </button>
+          )}
+        </div>
       </nav>
 
-      <div className="px-4 sm:px-6 mb-4">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 text-center">
-          <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Quality — Shift {shift}</h1>
-          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">{DEPT_FULL[dept] || dept?.toUpperCase()}</p>
+      <div className="px-4 sm:px-6 mb-4 mt-1">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Quality — Shift {shift}</h1>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{DEPT_FULL[dept] || dept?.toUpperCase()}</p>
+          </div>
+          {timeLock?.enabled && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-full self-start sm:self-auto">
+              <span className="text-base">⏰</span>
+              <div>
+                <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest">Save Window</p>
+                <p className="text-[11px] font-black text-amber-800">{timeLock.startTime} – {timeLock.endTime}</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -478,23 +526,40 @@ const QualityPage = () => {
               <h2 className="font-black uppercase tracking-widest text-[10px] flex items-center gap-2 text-slate-800">
                 <Edit3 size={16} className="text-emerald-500" /> LOG RECORD
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-300 hover:text-red-500"><X size={20} /></button>
+              <button onClick={() => { setIsModalOpen(false); setCustomReason(""); }} className="text-slate-300 hover:text-red-500"><X size={20} /></button>
             </div>
             <div className="space-y-4">
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 ml-1">Date</label>
-                <input type="date" value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 text-sm outline-none focus:ring-2 ring-emerald-500" />
+                <input type="date" value={customDate} onChange={(e) => setCustomDate(e.target.value)}
+                  readOnly={isSupervisor} disabled={isSupervisor}
+                  max={isSupervisor ? new Date().toISOString().split('T')[0] : undefined}
+                  title={isSupervisor ? 'Supervisors can only edit today' : ''}
+                  className={`w-full bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 text-sm outline-none focus:ring-2 ring-emerald-500 ${isSupervisor ? 'opacity-60 cursor-not-allowed' : ''}`} />
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 ml-1">Reason</label>
-                <select value={selectedIssue} onChange={(e) => setSelectedIssue(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 text-sm outline-none focus:ring-2 ring-emerald-500">
+                <select value={selectedIssue} onChange={(e) => { setSelectedIssue(e.target.value); setCustomReason(""); }} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 text-sm outline-none focus:ring-2 ring-emerald-500">
                   <option value="Target Met">✅ Target Met</option>
                   <option value="Machine Breakdown">⚠️ Machine Breakdown</option>
                   <option value="No Power">⚠️ No Power</option>
                   <option value="No Manpower">⚠️ No Manpower</option>
                   <option value="Quality Reject">⚠️ Quality Reject</option>
+                  <option value="Others">✏️ Others</option>
                 </select>
               </div>
+              {selectedIssue === "Others" && (
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 ml-1">Specify Reason</label>
+                  <input
+                    type="text"
+                    value={customReason}
+                    onChange={(e) => setCustomReason(e.target.value)}
+                    placeholder="Enter custom reason..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 text-sm outline-none focus:ring-2 ring-emerald-500"
+                  />
+                </div>
+              )}
               {selectedIssue !== "Target Met" && (
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 ml-1">Deviation Type</label>

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Lightbulb, Send, CheckCircle, Loader2, AlertCircle, Download } from 'lucide-react';
 
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 const BENEFIT_OPTIONS = ['Safety', 'Quality', 'Cost', 'Delivery', 'Morale'];
 
 const Idea = ({ shift }) => {
@@ -23,7 +25,7 @@ const Idea = ({ shift }) => {
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/ideation/config')
+    fetch(`${API}/api/ideation/config`)
       .then(r => r.json())
       .then(setConfig)
       .catch(() => setConfigError(true));
@@ -64,7 +66,7 @@ const Idea = ({ shift }) => {
         department: form.department.trim(),
       });
 
-      const res = await fetch('http://localhost:5000/api/ideation/submit', {
+      const res = await fetch(`${API}/api/ideation/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -120,15 +122,13 @@ const Idea = ({ shift }) => {
             <button onClick={handleReset} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-4 rounded-2xl uppercase tracking-widest transition-all active:scale-95">
               Submit Another Idea
             </button>
-            <a
-              href="http://localhost:5000/api/ideation/download"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => window.open(`${API}/api/ideation/download`, '_blank')}
               className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2"
             >
               <Download size={18} />
-              View Ideas Sheet
-            </a>
+              Download Ideas Sheet
+            </button>
             <button onClick={() => navigate('/')} className="w-full bg-slate-50 hover:bg-slate-100 text-slate-600 font-black py-4 rounded-2xl uppercase tracking-widest transition-all">
               Back to Dashboard
             </button>
@@ -177,15 +177,13 @@ const Idea = ({ shift }) => {
           <div className="text-sm text-slate-500">
             View the current ideation spreadsheet from your Google Sheet.
           </div>
-          <a
-            href="http://localhost:5000/api/ideation/download"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => window.open(`${API}/api/ideation/download`, '_blank')}
             className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-widest text-white transition-all hover:bg-slate-800"
           >
             <Download size={16} />
-            <span className="ml-2">View Ideas Sheet</span>
-          </a>
+            <span className="ml-2">Download Ideas Sheet</span>
+          </button>
         </div>
 
         {configError && (
@@ -241,7 +239,7 @@ const Idea = ({ shift }) => {
               className={inputCls(errors.department)} />
           </Field>
 
-          <button onClick={handleSubmit} disabled={status === 'submitting' || configError || !config}
+          <button onClick={handleSubmit} disabled={status === 'submitting'}
             className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-black py-4 rounded-2xl uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-emerald-100 flex items-center justify-center gap-3 mt-2">
             {status === 'submitting'
               ? <><Loader2 size={18} className="animate-spin" /> Submitting...</>

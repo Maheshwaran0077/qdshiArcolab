@@ -1,5 +1,6 @@
-const express = require('express');
-const router  = express.Router();
+const express   = require('express');
+const router    = express.Router();
+const Ideation  = require('../models/Ideation');
 
 router.get('/config', (req, res) => {
   res.json({
@@ -17,32 +18,36 @@ router.get('/config', (req, res) => {
 router.post('/submit', async (req, res) => {
   try {
     const { empId, problem, solution, benefits, department } = req.body;
-    const entries = {
-      empId:      process.env.FORM_ENTRY_EMPID,
-      problem:    process.env.FORM_ENTRY_PROBLEM,
-      solution:   process.env.FORM_ENTRY_SOLUTION,
-      benefit:    process.env.FORM_ENTRY_BENEFIT,
-      department: process.env.FORM_ENTRY_DEPT,
-    };
 
-    const params = new URLSearchParams();
-    params.append(entries.empId,      empId);
-    params.append(entries.problem,    problem);
-    params.append(entries.solution,   solution);
-    params.append(entries.department, department);
-    (Array.isArray(benefits) ? benefits : [benefits]).forEach(b => params.append(entries.benefit, b));
+    // Save to MongoDB
+    await Ideation.create({ empId, problem, solution, benefits, department });
 
-    const response = await fetch(process.env.GOOGLE_FORM_URL, {
-      method:   'POST',
-      headers:  { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body:     params.toString(),
-      redirect: 'manual',
-    });
-
-    if ([200, 302].includes(response.status) || response.type === 'opaqueredirect') {
-      return res.json({ success: true });
+    // Also forward to Google Form if configured
+    if (process.env.GOOGLE_FORM_URL && process.env.FORM_ENTRY_EMPID) {
+      try {
+        const entries = {
+          empId:      process.env.FORM_ENTRY_EMPID,
+          problem:    process.env.FORM_ENTRY_PROBLEM,
+          solution:   process.env.FORM_ENTRY_SOLUTION,
+          benefit:    process.env.FORM_ENTRY_BENEFIT,
+          department: process.env.FORM_ENTRY_DEPT,
+        };
+        const params = new URLSearchParams();
+        params.append(entries.empId,      empId);
+        params.append(entries.problem,    problem);
+        params.append(entries.solution,   solution);
+        params.append(entries.department, department);
+        (Array.isArray(benefits) ? benefits : [benefits]).forEach(b => params.append(entries.benefit, b));
+        await fetch(process.env.GOOGLE_FORM_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: params.toString(),
+          redirect: 'manual',
+        });
+      } catch (_) { /* Google Form sync optional — don't fail the request */ }
     }
-    res.status(500).json({ success: false, message: `Form returned status ${response.status}` });
+
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -50,18 +55,26 @@ router.post('/submit', async (req, res) => {
 
 router.get('/download', async (req, res) => {
   try {
-    const response = await fetch(process.env.GOOGLE_SHEET_CSV_URL);
-    if (!response.ok) {
-      // If CSV export fails, redirect to the Google Sheet view
-      return res.redirect('https://docs.google.com/spreadsheets/d/1lMRG2n23GSlHGymELXn7HDguAqqOELymMvu71wgq1L8/edit?usp=sharing');
-    }
-    const csv = await response.text();
+    const records = await Ideation.find().sort({ submittedAt: -1 }).lean();
+
+    const headers = ['Submitted At', 'Emp ID', 'Department', 'Problem Statement', 'Proposed Solution', 'Benefits'];
+    const rows = records.map(r => [
+      new Date(r.submittedAt).toLocaleString('en-GB'),
+      r.empId,
+      r.department,
+      r.problem,
+      r.solution,
+      (r.benefits || []).join(', '),
+    ]);
+
+    const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [headers, ...rows].map(row => row.map(escape).join(',')).join('\n');
+
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="ideation-export.csv"');
+    res.setHeader('Content-Disposition', 'attachment; filename="ideation-submissions.csv"');
     res.send(csv);
   } catch (err) {
-    // If there's an error, redirect to the Google Sheet view
-    res.redirect('https://docs.google.com/spreadsheets/d/1lMRG2n23GSlHGymELXn7HDguAqqOELymMvu71wgq1L8/edit?usp=sharing');
+    res.status(500).json({ error: err.message });
   }
 });
 
