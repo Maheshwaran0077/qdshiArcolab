@@ -555,7 +555,7 @@ const SuperAdminDashboard = () => {
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-600 pointer-events-none" size={20} />
                 <input required type="email" placeholder="Email Address" value={formData.gmail}
                   onChange={e => setFormData(p => ({ ...p, gmail: e.target.value }))}
-                  style={{ paddingLeft: '50px' }} className={`${inputCls} lowercase`} />
+                  style={{ paddingLeft: '50px' }} className={inputCls} />
               </div>
 
               {/* Password */}
