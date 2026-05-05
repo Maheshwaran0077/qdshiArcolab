@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useParams as useRParams } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { ChevronLeft, ChevronRight, Star, Activity, Clock, Calendar, TrendingUp, Trash2, AlertCircle, Download } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Star, Activity, Clock, Calendar, TrendingUp, Trash2, Download } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid, YAxis, Legend, Tooltip } from 'recharts';
 import CircularTracker from '../components/CircularTracker';
 import { dashboardMetrics as initialData } from '../dashboardData';
@@ -284,7 +284,7 @@ const DeliveryPage = () => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     fetchMetrics();
     return () => clearInterval(timer);
-  }, [activeShift, activeDept]);
+  }, [activeShift, activeDept, fetchMetrics]);
 
   const dynamicDaysData = useMemo(() => {
     const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();

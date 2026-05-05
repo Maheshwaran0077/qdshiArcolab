@@ -24,7 +24,7 @@ const Health = () => {
   const reportRef    = useRef(null);
 
   const [currentMonthIndex, setCurrentMonthIndex] = useState(new Date().getMonth());
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const currentYear = new Date().getFullYear();
   const currentMonthName = MONTHS[currentMonthIndex];
 
   const [notification, setNotification]       = useState({ show: false, message: '', type: '' });
@@ -77,7 +77,7 @@ const Health = () => {
       }
     };
     fetchMonthData();
-  }, [currentMonthName, shift, dept]);
+  }, [currentMonthName, currentYear, shift, dept]);
 
   // Fetch time lock for this dept+shift
   useEffect(() => {
