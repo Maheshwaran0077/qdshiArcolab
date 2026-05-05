@@ -324,35 +324,41 @@ const QualityPage = () => {
 
   return (
     <div className="min-h-screen bg-[#F0F4F8] text-[#334155] font-sans flex flex-col">
-      <nav className="flex flex-col sm:flex-row justify-between items-center px-4 sm:px-6 py-4 bg-[#F0F4F8] gap-4 sticky top-0 z-50">
-        <button onClick={() => navigate('/')} className="flex items-center gap-1 text-[#475569] font-bold text-xs uppercase self-start sm:self-center hover:text-emerald-600 transition-colors">
-          <ChevronLeft size={20} /> BACK
+      <nav className="flex justify-between items-center px-4 sm:px-6 py-3 bg-[#F0F4F8] sticky top-0 z-50">
+        <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-[#475569] font-bold text-xs uppercase hover:text-emerald-600 transition-colors">
+          <ChevronLeft size={18} /> <span className="hidden sm:inline">Back</span>
         </button>
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-          {timeLock?.enabled && (
-            <span className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-full text-[10px] font-bold text-amber-700">
-              ⏰ Save window: {timeLock.startTime} – {timeLock.endTime}
-            </span>
-          )}
+        <div className="flex items-center gap-2">
           <button onClick={downloadCSV}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-full font-bold text-xs shadow-sm transition-all">
-            <Download size={14}/> CSV
+            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-full font-bold text-xs shadow-sm transition-all">
+            <Download size={13}/> <span className="hidden sm:inline">CSV</span>
           </button>
           {canUpdate && (
             <button
               onClick={() => setIsModalOpen(true)}
-              className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center justify-center gap-2"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 sm:px-7 py-2 rounded-full text-[11px] font-black uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center gap-2"
             >
-              <Edit3 size={14} /> UPDATE {viewMonthName.split(' ')[0]} LOGS
+              <Edit3 size={13} /> <span className="hidden sm:inline">Update Logs</span><span className="sm:hidden">Update</span>
             </button>
           )}
         </div>
       </nav>
 
-      <div className="px-4 sm:px-6 mb-4">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 text-center">
-          <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Quality — Shift {shift}</h1>
-          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">{DEPT_FULL[dept] || dept?.toUpperCase()}</p>
+      <div className="px-4 sm:px-6 mb-4 mt-1">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Quality — Shift {shift}</h1>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{DEPT_FULL[dept] || dept?.toUpperCase()}</p>
+          </div>
+          {timeLock?.enabled && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-full self-start sm:self-auto">
+              <span className="text-base">⏰</span>
+              <div>
+                <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest">Save Window</p>
+                <p className="text-[11px] font-black text-amber-800">{timeLock.startTime} – {timeLock.endTime}</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

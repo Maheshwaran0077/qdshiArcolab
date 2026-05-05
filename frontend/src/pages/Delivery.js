@@ -357,23 +357,11 @@ const DeliveryPage = () => {
         </div>
       )}
 
-      <nav className="flex justify-between items-center px-4 md:px-8 py-3 bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="flex items-center gap-3 md:gap-6 min-w-0">
-          <button onClick={() => navigate('/')} className="group flex items-center gap-1.5 text-slate-400 font-black text-[10px] uppercase hover:text-emerald-600 transition-all shrink-0">
-            <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> <span className="hidden sm:inline">Back</span>
-          </button>
-          <div className="h-6 w-[1px] bg-slate-200 shrink-0" />
-          <div className="min-w-0">
-            <h1 className="text-[11px] font-black uppercase tracking-tighter text-slate-800 truncate">Delivery</h1>
-            <p className="text-[9px] font-bold text-emerald-500 uppercase truncate">{DEPT_FULL[activeDept]} · Shift {activeShift}</p>
-          </div>
-        </div>
-        <div className="flex gap-2 items-center shrink-0">
-          {timeLock?.enabled && (
-            <span className="hidden md:flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] font-bold text-amber-700">
-              ⏰ {timeLock.startTime} – {timeLock.endTime}
-            </span>
-          )}
+      <nav className="flex justify-between items-center px-4 sm:px-6 py-3 bg-white border-b border-slate-200 sticky top-0 z-50">
+        <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-slate-500 font-bold text-xs uppercase hover:text-emerald-600 transition-colors">
+          <ChevronLeft size={18} /> <span className="hidden sm:inline">Back</span>
+        </button>
+        <div className="flex gap-2 items-center">
           <button
             onClick={() => {
               const headers = ['Date', 'Planned', 'Dispatched', 'Breakdowns', 'Delay 1', 'Delay 2'];
@@ -382,16 +370,44 @@ const DeliveryPage = () => {
               const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
               a.download = `Delivery_Shift${activeShift}_${activeDept}.csv`; a.click();
             }}
-            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-all">
+            className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-full text-xs font-bold shadow-sm transition-all">
             <Download size={13} /> <span className="hidden sm:inline">CSV</span>
           </button>
           {canEdit && (
-            <button onClick={() => setIsModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 md:px-6 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg shadow-emerald-200 transition-all active:scale-95">
+            <button onClick={() => setIsModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 sm:px-7 py-2 rounded-full text-[11px] font-black uppercase shadow-md transition-all active:scale-95">
               <span className="hidden sm:inline">Update Metrics</span><span className="sm:hidden">Update</span>
             </button>
           )}
         </div>
       </nav>
+
+      {/* Title card — matches Quality page pattern */}
+      <div className="px-4 sm:px-6 mb-2 mt-1">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Delivery</h1>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{DEPT_FULL[activeDept]} · Shift {activeShift}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-full">
+              <Clock size={13} className="text-blue-500 shrink-0" />
+              <div>
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Shift {activeShift}</p>
+                <p className="text-[11px] font-black text-slate-700">{activeShift === '1' ? '06:00 – 14:00' : '14:00 – 22:00'}</p>
+              </div>
+            </div>
+            {timeLock?.enabled && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-full">
+                <span className="text-base">⏰</span>
+                <div>
+                  <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest">Save Window</p>
+                  <p className="text-[11px] font-black text-amber-800">{timeLock.startTime} – {timeLock.endTime}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       <main className="flex-1 grid grid-cols-12 gap-4 md:gap-6 p-4 md:p-6 max-w-[1600px] mx-auto w-full">
         <div className="col-span-12 md:col-span-6 lg:col-span-3 flex flex-col gap-4 md:gap-6">
@@ -478,23 +494,12 @@ const DeliveryPage = () => {
 
           <div className="bg-white rounded-[2rem] p-5 border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center mb-4">
-              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">System Engine</span>
+              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">System Status</span>
               <span className="text-sm font-black text-slate-800 tabular-nums">{currentTime.toLocaleTimeString([], { hour12: false })}</span>
             </div>
             <div className="space-y-3">
               <TipItem icon={<Activity size={12} className="text-emerald-500" />} text={`Last update: ${Math.floor((currentTime - lastBackupTime)/1000)}s ago`} />
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-slate-50 rounded-2xl border border-transparent shrink-0"><Calendar size={12} className="text-blue-500" /></div>
-                <div>
-                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Shift {activeShift}</p>
-                  <p className="text-[11px] font-black text-slate-700">{activeShift === '1' ? '06:00 – 14:00' : '14:00 – 22:00'}</p>
-                </div>
-              </div>
-              {timeLock?.enabled && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl">
-                  <span className="text-[9px] font-bold text-amber-700">⏰ Save window: {timeLock.startTime} – {timeLock.endTime}</span>
-                </div>
-              )}
+              <TipItem icon={<Calendar size={12} className="text-blue-500" />} text={`Viewing: ${MONTHS[viewMonth]} ${viewYear}`} />
             </div>
           </div>
         </div>
