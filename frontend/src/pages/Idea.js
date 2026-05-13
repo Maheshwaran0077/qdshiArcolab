@@ -10,7 +10,7 @@ const Idea = ({ shift }) => {
   const navigate = useNavigate();
   const user     = JSON.parse(localStorage.getItem('userInfo') || 'null');
 
-  const [config, setConfig]           = useState(null);
+  const [_config, setConfig]           = useState(null);
   const [configError, setConfigError] = useState(false);
 
   const [form, setForm] = useState({

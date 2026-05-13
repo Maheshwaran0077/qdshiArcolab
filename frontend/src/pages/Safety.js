@@ -1,7 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 import {
   ChevronLeft, ChevronRight, Star, Maximize2, X, ShieldAlert, AlertTriangle, CheckCircle, Download, Clock
 } from 'lucide-react';
@@ -11,6 +9,8 @@ import {
 } from 'recharts';
 import CircularTracker from '../components/CircularTracker';
 import { dashboardMetrics as initialData } from '../dashboardData';
+// IST timezone helpers
+const getISTDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
 const API_BASE_URL = `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/metrics`;
 const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -33,7 +33,7 @@ const SafetyPage = () => {
   const [metrics, setMetrics] = useState(initialData);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customDate, setCustomDate] = useState(getISTDate);
   // New safety fields
   const [numSafetyIncidents, setNumSafetyIncidents] = useState(0);
   const [numNearMiss, setNumNearMiss] = useState(0);
@@ -182,14 +182,34 @@ const SafetyPage = () => {
     } catch (e) { alert("Sync failed."); }
   };
 
-  const downloadPDF = async () => {
-    if (!reportRef.current) return;
-    const canvas = await html2canvas(reportRef.current, { scale: 1.5, useCORS: true, backgroundColor: '#F0F4F8' });
-    const img = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('l', 'mm', 'a4');
-    const pw = pdf.internal.pageSize.getWidth();
-    pdf.addImage(img, 'PNG', 0, 0, pw, (canvas.height * pw) / canvas.width);
-    pdf.save(`Safety_Shift${shift}_${dept}_${viewMonthName}_${viewYear}.pdf`);
+  const downloadAllShiftsCSV = async () => {
+    try {
+      const API_ROOT = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const res = await fetch(`${API_ROOT}/api/metrics?dept=${dept || 'fgmw'}`);
+      const allMetrics = await res.json();
+      const sMetric = Array.isArray(allMetrics) ? allMetrics.find(m => m.letter === 'S') : null;
+      if (!sMetric) return alert('No data found');
+
+      const viewMonthIdx = viewDate.getMonth();
+      const headers = ['Shift', 'Date', 'Safety Incidents', 'Near Miss', 'Unsafe Acts', 'People Affected', 'Severity'];
+      const rows = [];
+      for (const s of ['1', '2', '3']) {
+        const logs = sMetric.shifts?.[s]?.issueLogs || [];
+        logs
+          .filter(l => {
+            if (!l.rawDate) return false;
+            const d = new Date(l.rawDate);
+            return d.getMonth() === viewMonthIdx && d.getFullYear() === viewYear;
+          })
+          .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate))
+          .forEach(l => rows.push([`Shift ${s}`, l.date || l.rawDate, l.numSafetyIncidents ?? 0, l.numNearMiss ?? 0, l.numUnsafeActs ?? 0, l.affected ?? 0, l.severity || '']));
+      }
+      const csv = [headers, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = `Safety_AllShifts_${dept}_${viewMonthName}_${viewYear}.csv`;
+      a.click();
+    } catch { alert('Failed to download all-shifts data'); }
   };
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-white text-orange-600 font-black uppercase tracking-widest italic">Arcolab Safety Sync...</div>;
@@ -205,13 +225,13 @@ const SafetyPage = () => {
           <button
             onClick={() => {
               const headers = ['Date', 'Safety Incidents', 'Near Miss', 'Unsafe Acts', 'People Affected', 'Severity'];
-              const rows = sData.issueLogs.map(l => [l.date || l.rawDate, l.numSafetyIncidents, l.numNearMiss, l.numUnsafeActs, l.peopleAffected, l.severity]);
+              const rows = sData.issueLogs.map(l => [l.date || l.rawDate, l.numSafetyIncidents, l.numNearMiss, l.numUnsafeActs, l.affected, l.severity]);
               const csv = [headers, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
               const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
               a.download = `Safety_Shift${shift}_${dept}.csv`; a.click();
             }}
             className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-full font-bold text-xs shadow-sm transition-all">
-            <Download size={13} /> <span className="hidden sm:inline">CSV</span>
+            <Download size={13} /> <span className="hidden sm:inline">Shiftwise</span>
           </button>
           {canUpdate && (
             <button onClick={() => setIsModalOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-5 sm:px-7 py-2 rounded-full text-[11px] font-black uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center gap-2">
@@ -428,11 +448,11 @@ const SafetyPage = () => {
         </div>
       </main>
 
-      {/* Floating PDF button */}
+      {/* Floating All-Shifts CSV download button */}
       <button
-        onClick={downloadPDF}
+        onClick={downloadAllShiftsCSV}
         className="fixed bottom-6 right-6 w-14 h-14 bg-orange-600 hover:bg-orange-700 text-white rounded-full shadow-2xl shadow-orange-200 flex items-center justify-center z-[90] active:scale-95 transition-all"
-        title="Download PDF"
+        title="Download All Shifts CSV (current month)"
       >
         <Download size={22} />
       </button>
@@ -453,7 +473,7 @@ const SafetyPage = () => {
             <div className="space-y-4">
               <InputField label="Date" type="date" value={customDate}
                 onChange={(e) => setCustomDate(e.target.value)}
-                max={user?.role === 'supervisor' ? new Date().toISOString().split('T')[0] : undefined}
+                max={user?.role === 'supervisor' ? getISTDate() : undefined}
                 readOnly={user?.role === 'supervisor'}
                 title={user?.role === 'supervisor' ? 'Supervisors can only update today' : ''}
               />

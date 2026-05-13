@@ -1,7 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useParams as useRParams } from 'react-router-dom';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 import { ChevronLeft, ChevronRight, Star, Activity, Clock, Calendar, TrendingUp, Trash2, Download } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid, YAxis, Legend, Tooltip } from 'recharts';
 import CircularTracker from '../components/CircularTracker';
@@ -103,6 +101,10 @@ const THEME_STYLES = {
   blue: { bg: 'bg-blue-600', text: 'text-blue-800', light: 'bg-blue-50/20', border: 'border-blue-100' }
 };
 
+// IST timezone helpers for frontend
+const getISTDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+const getISTTime = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
+
 const DeliveryPage = () => {
   const navigate = useNavigate();
   const { shift: paramShift, dept: paramDept } = useRParams();
@@ -135,7 +137,7 @@ const DeliveryPage = () => {
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [tableSyncing, setTableSyncing] = useState({ staff: false, activity: false });
 
-  const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customDate, setCustomDate] = useState(getISTDate);
   const [plannedCount, setPlannedCount] = useState('');
   const [dispatchedCount, setDispatchedCount] = useState('');
   const [breakdowns, setBreakdowns] = useState('');
@@ -313,14 +315,32 @@ const DeliveryPage = () => {
       return { name: m.monthName.slice(0, 3), pass: passCount, fail: m.logs.length - passCount };
     }), [allYearLogs]);
 
-  const downloadPDF = async () => {
-    if (!reportRef.current) return;
-    const canvas = await html2canvas(reportRef.current, { scale: 1.5, useCORS: true, backgroundColor: '#F8FAFC' });
-    const img = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('l', 'mm', 'a4');
-    const pw = pdf.internal.pageSize.getWidth();
-    pdf.addImage(img, 'PNG', 0, 0, pw, (canvas.height * pw) / canvas.width);
-    pdf.save(`Delivery_Shift${activeShift}_${activeDept}_${MONTHS[viewMonth]}_${viewYear}.pdf`);
+  const downloadAllShiftsCSV = async () => {
+    try {
+      const res = await fetch(`${API}/api/metrics?dept=${activeDept}`);
+      const allMetrics = await res.json();
+      const dMetric = Array.isArray(allMetrics) ? allMetrics.find(m => m.letter === 'D') : null;
+      if (!dMetric) return alert('No data found');
+
+      const headers = ['Shift', 'Date', deptLabels.targetLabel, deptLabels.actualLabel, 'Breakdowns', deptLabels.delay1Col, deptLabels.delay2Col];
+      const rows = [];
+      for (const s of ['1', '2', '3']) {
+        const logs = dMetric.shifts?.[s]?.issueLogs || [];
+        logs
+          .filter(l => {
+            if (!l.rawDate) return false;
+            const d = new Date(l.rawDate);
+            return d.getMonth() === viewMonth && d.getFullYear() === viewYear;
+          })
+          .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate))
+          .forEach(l => rows.push([`Shift ${s}`, l.date || l.rawDate, l.planned, l.dispatched, l.breakdowns, l.pbrDelay, l.qcDelay]));
+      }
+      const csv = [headers, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = `Delivery_AllShifts_${activeDept}_${MONTHS[viewMonth]}_${viewYear}.csv`;
+      a.click();
+    } catch { alert('Failed to download all-shifts data'); }
   };
 
   if (loading) return <div className="h-screen flex items-center justify-center font-black text-emerald-500 animate-pulse bg-slate-50">LOADING SYSTEM...</div>;
@@ -364,14 +384,14 @@ const DeliveryPage = () => {
         <div className="flex gap-2 items-center">
           <button
             onClick={() => {
-              const headers = ['Date', 'Planned', 'Dispatched', 'Breakdowns', 'Delay 1', 'Delay 2'];
+              const headers = ['Date', deptLabels.targetLabel, deptLabels.actualLabel, 'Breakdowns', deptLabels.delay1Col, deptLabels.delay2Col];
               const rows = dData.issueLogs.map(l => [l.date || l.rawDate, l.planned, l.dispatched, l.breakdowns, l.pbrDelay, l.qcDelay]);
               const csv = [headers, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
               const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
               a.download = `Delivery_Shift${activeShift}_${activeDept}.csv`; a.click();
             }}
             className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-full text-xs font-bold shadow-sm transition-all">
-            <Download size={13} /> <span className="hidden sm:inline">CSV</span>
+            <Download size={13} /> <span className="hidden sm:inline">Shiftwise</span>
           </button>
           {canEdit && (
             <button onClick={() => setIsModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 sm:px-7 py-2 rounded-full text-[11px] font-black uppercase shadow-md transition-all active:scale-95">
@@ -495,7 +515,7 @@ const DeliveryPage = () => {
           <div className="bg-white rounded-[2rem] p-5 border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">System Status</span>
-              <span className="text-sm font-black text-slate-800 tabular-nums">{currentTime.toLocaleTimeString([], { hour12: false })}</span>
+              <span className="text-sm font-black text-slate-800 tabular-nums">{currentTime.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false })}</span>
             </div>
             <div className="space-y-3">
               <TipItem icon={<Activity size={12} className="text-emerald-500" />} text={`Last update: ${Math.floor((currentTime - lastBackupTime)/1000)}s ago`} />
@@ -512,20 +532,20 @@ const DeliveryPage = () => {
 
       {/* --- Modals --- */}
       <EntryModal isOpen={isStaffModalOpen} onClose={() => setIsStaffModalOpen(false)} title="Personnel Terminal" type="staff" data={staffLogs} 
-        onAdd={() => setStaffLogs([{id:"", name:"", action:"", time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12:false})}, ...staffLogs])}
+        onAdd={() => setStaffLogs([{id:"", name:"", action:"", time: getISTTime()}, ...staffLogs])}
         onEdit={(i, f, v) => setStaffLogs(prev => { let u = [...prev]; u[i][f] = v; return u; })}
         setDeleteConfig={setDeleteConfig} onSubmit={() => handleLogSubmit('staff')} syncing={tableSyncing.staff} />
 
       <EntryModal isOpen={isActivityModalOpen} onClose={() => setIsActivityModalOpen(false)} title="Activity Log" type="activity" data={activityLogs} 
-        onAdd={() => setActivityLogs([{id:"", name:"", action:"", time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12:false})}, ...activityLogs])}
+        onAdd={() => setActivityLogs([{id:"", name:"", action:"", time: getISTTime()}, ...activityLogs])}
         onEdit={(i, f, v) => setActivityLogs(prev => { let u = [...prev]; u[i][f] = v; return u; })}
         setDeleteConfig={setDeleteConfig} onSubmit={() => handleLogSubmit('activity')} syncing={tableSyncing.activity} />
 
-      {/* Floating PDF button */}
+      {/* Floating All-Shifts CSV download button */}
       <button
-        onClick={downloadPDF}
+        onClick={downloadAllShiftsCSV}
         className="fixed bottom-6 right-6 w-14 h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full shadow-2xl shadow-emerald-200 flex items-center justify-center z-[90] active:scale-95 transition-all"
-        title="Download PDF"
+        title="Download All Shifts CSV (current month)"
       >
         <Download size={22} />
       </button>
@@ -538,7 +558,7 @@ const DeliveryPage = () => {
             <div className="space-y-3">
               <input type="date" value={customDate}
                 onChange={e => setCustomDate(e.target.value)}
-                max={user?.role === 'supervisor' ? new Date().toISOString().split('T')[0] : undefined}
+                max={user?.role === 'supervisor' ? getISTDate() : undefined}
                 readOnly={user?.role === 'supervisor'}
                 title={user?.role === 'supervisor' ? 'Supervisors can only update today' : ''}
                 className="w-full bg-slate-50 rounded-2xl p-4 font-bold outline-none" />
@@ -575,26 +595,35 @@ const DeliveryPage = () => {
 const TableContent = ({ data, type, onEdit, readonly, setDeleteConfig }) => {
   const isStaff = type === 'staff';
   return (
-    <div className="flex flex-col flex-1">
-      <div className="px-8 py-3 bg-slate-50 grid grid-cols-5 text-[9px] font-black text-slate-400 uppercase sticky top-0 z-10 border-b border-slate-100">
-        <span>ID</span><span>Name/Action</span><span className="col-span-2">Details</span><span className="text-right">Action</span>
-      </div>
-      <div className="flex-1 overflow-y-auto px-8 divide-y divide-slate-50">
-        {data.map((log, i) => (
-          <div key={i} className="grid grid-cols-5 py-4 items-center group">
-            <input disabled={readonly} className={`text-[11px] font-black bg-transparent outline-none ${isStaff ? 'text-emerald-600' : 'text-blue-600'}`} value={log.id} onChange={(e) => onEdit(i, 'id', e.target.value)} />
-            <input disabled={readonly} className="text-[12px] font-bold text-slate-700 bg-transparent outline-none" value={log.name} onChange={(e) => onEdit(i, 'name', e.target.value)} />
-            <div className="col-span-2 flex items-center gap-2">
-              <input disabled={readonly} className="text-[10px] font-bold text-slate-400 uppercase bg-transparent outline-none flex-1" value={log.action} onChange={(e) => onEdit(i, 'action', e.target.value)} />
-              <span className="text-[10px] text-slate-300">{log.time}</span>
-            </div>
-            <div className="text-right">
-              {!readonly && (
-                <button onClick={() => setDeleteConfig({ isOpen: true, type, index: i })} className="p-2 text-slate-300 hover:text-rose-500 rounded-lg transition-colors"><Trash2 size={14}/></button>
-              )}
-            </div>
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="overflow-x-auto flex-1 flex flex-col">
+        <div className="min-w-[360px] flex flex-col flex-1">
+          {/* Header */}
+          <div className="px-3 sm:px-8 py-3 bg-slate-50 grid grid-cols-5 text-[9px] font-black text-slate-400 uppercase border-b border-slate-100 shrink-0">
+            <span className="truncate">ID</span>
+            <span className="truncate">Name</span>
+            <span className="col-span-2 truncate">Details</span>
+            <span className="text-right truncate">Del</span>
           </div>
-        ))}
+          {/* Rows */}
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+            {data.map((log, i) => (
+              <div key={i} className="grid grid-cols-5 py-3 items-center group px-3 sm:px-8">
+                <input disabled={readonly} className={`text-[10px] font-black bg-transparent outline-none truncate mr-1 min-w-0 ${isStaff ? 'text-emerald-600' : 'text-blue-600'}`} value={log.id} onChange={(e) => onEdit && onEdit(i, 'id', e.target.value)} />
+                <input disabled={readonly} className="text-[10px] font-bold text-slate-700 bg-transparent outline-none truncate mr-1 min-w-0" value={log.name} onChange={(e) => onEdit && onEdit(i, 'name', e.target.value)} />
+                <div className="col-span-2 flex items-center gap-1 min-w-0 overflow-hidden">
+                  <input disabled={readonly} className="text-[9px] font-bold text-slate-400 uppercase bg-transparent outline-none min-w-0 truncate flex-1" value={log.action} onChange={(e) => onEdit && onEdit(i, 'action', e.target.value)} />
+                  <span className="text-[9px] text-slate-300 shrink-0">{log.time}</span>
+                </div>
+                <div className="text-right shrink-0">
+                  {!readonly && (
+                    <button onClick={() => setDeleteConfig({ isOpen: true, type, index: i })} className="p-1.5 text-slate-300 hover:text-rose-500 rounded-lg transition-colors"><Trash2 size={13}/></button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

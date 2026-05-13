@@ -1,5 +1,5 @@
 const HealthModel  = require('../models/Health');
-const { checkTimeLock, createAuditLog, notifyHod } = require('../utils/saveHelpers');
+const { checkTimeLock, createAuditLog, notifyHod, nowIST, formatISTDate } = require('../utils/saveHelpers');
 
 const getHealthData = async (req, res) => {
   try {
@@ -64,7 +64,7 @@ const updateHealthDay = async (req, res) => {
 
     // Async notifications & audit (non-blocking)
     if (empId && empName) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = formatISTDate(nowIST());
       createAuditLog({ date: today, empId, empName, dept: d, shift: s, module: 'H', deptType: 'qdsh' });
       notifyHod({ empId, empName, dept: d, shift: s, module: 'H', deptType: 'qdsh', date: today });
     }

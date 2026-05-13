@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const Metric  = require('../models/Metrics');
-const { checkTimeLock, createAuditLog, notifyHod } = require('../utils/saveHelpers');
+const { checkTimeLock, createAuditLog, notifyHod, nowIST, formatISTDate } = require('../utils/saveHelpers');
 
 const DEPT_CONFIG = {
   fgmw:   'Finished Goods Warehouse',
@@ -77,7 +77,7 @@ router.post('/update', async (req, res) => {
 
     // Async side-effects (non-blocking)
     if (empId && empName) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = formatISTDate(nowIST());
       createAuditLog({ date: today, empId, empName, dept, shift, module: letter, deptType: 'qdsh' });
       notifyHod({ empId, empName, dept, shift, module: letter, deptType: 'qdsh' });
     }
@@ -103,7 +103,7 @@ router.post('/staff', async (req, res) => {
       { upsert: true, new: true }
     );
     if (empId && empName) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = formatISTDate(nowIST());
       notifyHod({ empId, empName, dept, shift, module: letter, deptType: 'qdsh' });
       createAuditLog({ date: today, empId, empName, dept, shift, module: letter, deptType: 'qdsh' });
     }

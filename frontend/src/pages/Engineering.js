@@ -95,7 +95,7 @@ export default function Engineering() {
   const isSuperAdmin = user?.role === 'superadmin';
   const userDepts  = (user?.department || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   const canEdit    = (isSupervisor && userDepts.includes('engineering')) || isSuperAdmin;
-  const today     = new Date().toISOString().split('T')[0];
+  const today     = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
   const [shift,   setShift]   = useState('1');
   const [date,    setDate]    = useState(today);

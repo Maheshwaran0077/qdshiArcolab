@@ -16,6 +16,7 @@ const hrRoutes           = require('./routes/hrRoutes');
 const timeLockRoutes     = require('./routes/timeLockRoutes');
 const loginLogRoutes     = require('./routes/loginLogRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const { startShiftAlertJob } = require('./jobs/shiftAlertJob');
 
 const app = express();
 
@@ -166,6 +167,9 @@ mongoose.connect(process.env.MONGO_URI)
     );
 
     console.log('✅ Health migration done');
+
+    // Start shift-missed-alert cron job
+    startShiftAlertJob();
 
   })
   .catch(err => console.error('❌ MongoDB error:', err.message));

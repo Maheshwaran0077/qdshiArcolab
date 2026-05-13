@@ -1,7 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 import {
@@ -14,6 +12,9 @@ import {
 } from 'recharts';
 import CircularTracker from '../components/CircularTracker';
 import { dashboardMetrics as initialData } from '../dashboardData';
+// IST timezone helpers
+const getISTDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+const getISTTime = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
 
 const MySwal = withReactContent(Swal);
 const API_BASE_URL = `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/metrics`;
@@ -53,7 +54,7 @@ const QualityPage = () => {
   const [deviationType, setDeviationType] = useState("");
   const [customReason, setCustomReason] = useState("");
   const [viewDate, setViewDate] = useState(new Date());
-  const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customDate, setCustomDate] = useState(getISTDate);
 
   const [staffLogs, setStaffLogs] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
@@ -186,7 +187,7 @@ const QualityPage = () => {
       id: `REF-${Math.floor(Math.random() * 9000 + 1000)}`,
       name: "",
       action: "",
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+      time: getISTTime()
     };
     if (type === 'staff') setStaffLogs(prev => [newRow, ...prev]);
     else setActivityLogs(prev => [newRow, ...prev]);
@@ -202,7 +203,7 @@ const QualityPage = () => {
   };
 
   const downloadCSV = () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getISTDate();
     const logs = Array.isArray(qData.issueLogs) ? qData.issueLogs : [];
     const headers = ['Date', 'Reason', 'Deviation Type', 'Timestamp'];
     const rows = logs
@@ -215,28 +216,34 @@ const QualityPage = () => {
     a.click();
   };
 
-  const downloadPDF = async () => {
-    const loadingSwal = MySwal.fire({
-      title: 'Generating PDF...',
-      didOpen: () => Swal.showLoading(),
-      allowOutsideClick: false
-    });
-
+  const downloadAllShiftsCSV = async () => {
     try {
-      const element = reportRef.current;
-      const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: "#F0F4F8" });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('l', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Quality_Report_${viewMonthName}_${viewYear}.pdf`);
-      loadingSwal.close();
-      notifySuccess("Report Downloaded");
-    } catch (e) {
-      loadingSwal.close();
-      notifyError("PDF Generation Failed");
-    }
+      const API_ROOT = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const res = await fetch(`${API_ROOT}/api/metrics?dept=${dept || 'fgmw'}`);
+      const allMetrics = await res.json();
+      const qMetric = Array.isArray(allMetrics) ? allMetrics.find(m => m.letter === 'Q') : null;
+      if (!qMetric) return notifyError('No data found');
+
+      const viewMonthIdx = viewDate.getMonth();
+      const headers = ['Shift', 'Date', 'Reason', 'Deviation Type', 'Timestamp'];
+      const rows = [];
+      for (const s of ['1', '2', '3']) {
+        const logs = qMetric.shifts?.[s]?.issueLogs || [];
+        logs
+          .filter(l => {
+            if (!l.rawDate) return false;
+            const d = new Date(l.rawDate);
+            return d.getMonth() === viewMonthIdx && d.getFullYear() === viewYear;
+          })
+          .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate))
+          .forEach(l => rows.push([`Shift ${s}`, l.date || l.rawDate, l.reason || '', l.deviationType || '', l.timestamp || '']));
+      }
+      const csv = [headers, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = `Quality_AllShifts_${dept}_${viewMonthName}_${viewYear}.csv`;
+      a.click();
+    } catch { notifyError('Failed to download all-shifts data'); }
   };
 
   useEffect(() => {
@@ -331,7 +338,7 @@ const QualityPage = () => {
         <div className="flex items-center gap-2">
           <button onClick={downloadCSV}
             className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-full font-bold text-xs shadow-sm transition-all">
-            <Download size={13}/> <span className="hidden sm:inline">CSV</span>
+            <Download size={13}/> <span className="hidden sm:inline">Shiftwise</span>
           </button>
           {canUpdate && (
             <button
@@ -513,8 +520,8 @@ const QualityPage = () => {
         </div>
       </main>
 
-      {/* Floating Action Button */}
-      <button onClick={downloadPDF} className="fixed bottom-6 right-6 w-14 h-14 bg-emerald-700 hover:bg-emerald-800 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 z-[90]">
+      {/* Floating All-Shifts CSV download button */}
+      <button onClick={downloadAllShiftsCSV} title="Download All Shifts CSV (current month)" className="fixed bottom-6 right-6 w-14 h-14 bg-emerald-700 hover:bg-emerald-800 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 z-[90]">
         <Download size={24} />
       </button>
 
@@ -533,7 +540,7 @@ const QualityPage = () => {
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 ml-1">Date</label>
                 <input type="date" value={customDate} onChange={(e) => setCustomDate(e.target.value)}
                   readOnly={isSupervisor} disabled={isSupervisor}
-                  max={isSupervisor ? new Date().toISOString().split('T')[0] : undefined}
+                  max={isSupervisor ? getISTDate() : undefined}
                   title={isSupervisor ? 'Supervisors can only edit today' : ''}
                   className={`w-full bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 text-sm outline-none focus:ring-2 ring-emerald-500 ${isSupervisor ? 'opacity-60 cursor-not-allowed' : ''}`} />
               </div>

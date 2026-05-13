@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 import { Plus, X, Save, ChevronLeft, ChevronRight, Lock, CheckCircle2, ShieldAlert, Clock, Download } from 'lucide-react';
 import axios from 'axios';
+// IST timezone helpers
+const getISTDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+const getISTTime = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -16,7 +17,6 @@ const Health = () => {
 
   const user        = JSON.parse(localStorage.getItem('userInfo')) || { role: 'supervisor' };
   const isSuperAdmin = user.role === 'superadmin';
-  const isHOD        = user.role === 'hod';
   const isSupervisor = user.role === 'supervisor';
   const userDepts    = (user.department || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   const isAssignedDept = isSuperAdmin || userDepts.includes((dept || '').toLowerCase());
@@ -91,16 +91,18 @@ const Health = () => {
 
   const isOutsideTimeLock = () => {
     if (!timeLock?.enabled || isSuperAdmin) return false;
-    const now = new Date();
-    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const istTime = getISTTime(); // HH:MM in IST
+    const [nowH, nowM] = istTime.split(':').map(Number);
+    const nowMins = nowH * 60 + nowM;
     const [sh, sm] = timeLock.startTime.split(':').map(Number);
     const [eh, em] = timeLock.endTime.split(':').map(Number);
     return nowMins < sh * 60 + sm || nowMins > eh * 60 + em;
   };
 
   const isCurrentDay = (dayDate) => {
-    const now = new Date();
-    return dayDate === now.getDate() && currentMonthName === MONTHS[now.getMonth()] && currentYear === now.getFullYear();
+    const istDate = getISTDate(); // YYYY-MM-DD
+    const [yr, mo, dy] = istDate.split('-').map(Number);
+    return dayDate === dy && currentMonthName === MONTHS[mo - 1] && currentYear === yr;
   };
 
   const calcAttendance = (attendees, totalStrength) => {
@@ -185,14 +187,29 @@ const Health = () => {
     a.click();
   };
 
-  const downloadPDF = async () => {
-    if (!reportRef.current) return;
-    const canvas = await html2canvas(reportRef.current, { scale: 1.5, useCORS: true, backgroundColor: '#f8fafc' });
-    const img = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('l', 'mm', 'a4');
-    const pw = pdf.internal.pageSize.getWidth();
-    pdf.addImage(img, 'PNG', 0, 0, pw, (canvas.height * pw) / canvas.width);
-    pdf.save(`Health_${dept}_Shift${shift}_${currentMonthName}_${currentYear}.pdf`);
+  const downloadAllShiftsCSV = async () => {
+    try {
+      const shiftsData = await Promise.all(
+        ['1', '2', '3'].map(s =>
+          axios.get(`${API}/api/health`, {
+            params: { month: currentMonthName, year: currentYear, dept: dept || 'fgmw', shift: s },
+          }).then(r => ({ shift: s, days: r.data?.days || [] })).catch(() => ({ shift: s, days: [] }))
+        )
+      );
+      const headers = ['Shift', 'Date', 'Status', 'Key Points / Observations', 'Attendees', 'Total Strength', 'Attendance %'];
+      const rows = [];
+      for (const { shift: s, days } of shiftsData) {
+        days.filter(d => d.status).forEach(d => {
+          const pct = d.status === 'meeting' ? calcAttendance(d.attendees, d.totalStrength) : '';
+          rows.push([`Shift ${s}`, d.date, d.status, d.keypoints || '', d.attendees ?? '', d.totalStrength ?? '', pct ?? '']);
+        });
+      }
+      const csv = [headers, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = `Health_AllShifts_${dept}_${currentMonthName}_${currentYear}.csv`;
+      a.click();
+    } catch { alert('Failed to download all-shifts data'); }
   };
 
   const isMeeting           = formData.status === 'meeting';
@@ -229,7 +246,7 @@ const Health = () => {
         </button>
         <button onClick={downloadCSV}
           className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-full font-bold text-xs shadow-sm transition-all">
-          <Download size={13}/> <span className="hidden sm:inline">CSV</span>
+          <Download size={13}/> <span className="hidden sm:inline">Shiftwise</span>
         </button>
       </nav>
 
@@ -327,11 +344,11 @@ const Health = () => {
 
       </div>{/* end grid wrapper */}
 
-      {/* Floating PDF button */}
+      {/* Floating All-Shifts CSV download button */}
       <button
-        onClick={downloadPDF}
+        onClick={downloadAllShiftsCSV}
         className="fixed bottom-6 right-6 w-14 h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full shadow-2xl shadow-emerald-200 flex items-center justify-center z-[90] active:scale-95 transition-all"
-        title="Download PDF"
+        title="Download All Shifts CSV (current month)"
       >
         <Download size={22} />
       </button>

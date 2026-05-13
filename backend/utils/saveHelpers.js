@@ -5,22 +5,33 @@ const User            = require('../models/User');
 
 const MODULE_NAMES = { Q: 'Quality', D: 'Delivery', S: 'Safety', H: 'Health' };
 
+// IST = UTC+5:30
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+const nowIST = () => new Date(Date.now() + IST_OFFSET_MS);
+
+const formatISTTime = (istDate) => {
+  const h = String(istDate.getUTCHours()).padStart(2, '0');
+  const m = String(istDate.getUTCMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+};
+
+const formatISTDate = (istDate) => istDate.toISOString().split('T')[0];
+
 // Returns { allowed: true } or { allowed: false, message }
 const checkTimeLock = async (dept, shift) => {
   try {
     const lock = await TimeLock.findOne({ dept, shift, enabled: true });
     if (!lock) return { allowed: true };
 
-    const now = new Date();
-    const h   = String(now.getHours()).padStart(2, '0');
-    const m   = String(now.getMinutes()).padStart(2, '0');
-    const cur = `${h}:${m}`;
+    const ist = nowIST();
+    const cur = formatISTTime(ist);
 
     if (cur >= lock.startTime && cur <= lock.endTime) return { allowed: true };
 
     return {
       allowed: false,
-      message: `Outside edit window for ${dept.toUpperCase()} Shift ${shift} (${lock.startTime}–${lock.endTime}). Current time: ${cur}`,
+      message: `Outside edit window for ${dept.toUpperCase()} Shift ${shift} (${lock.startTime}–${lock.endTime} IST). Current IST time: ${cur}`,
     };
   } catch {
     return { allowed: true }; // fail open so saves still work if DB is down
@@ -40,19 +51,17 @@ const createAuditLog = async ({ date, empId, empName, dept, shift, module, deptT
   }
 };
 
-// Finds the HOD whose department field contains `dept` (handles comma-separated assignments)
-// and creates a notification with full details.
+// Finds the HOD whose department field contains `dept` and creates a notification.
 const notifyHod = async ({ empId, empName, dept, shift, module, deptType, date }) => {
   try {
-    // Regex matches "fgmw" inside "fgmw", "fgmw,pmw", "pmw,fgmw", etc.
     const deptRegex = new RegExp(`(^|,)\\s*${dept}\\s*(,|$)`, 'i');
     const hod = await User.findOne({ role: 'hod', department: { $regex: deptRegex } });
     if (!hod) return;
 
-    const now       = new Date();
-    const dateStr   = date || now.toISOString().split('T')[0];
-    const timeStr   = now.toTimeString().slice(0, 5); // HH:MM
-    const modName   = module ? `${module} — ${MODULE_NAMES[module] || module}` : 'Update';
+    const ist     = nowIST();
+    const dateStr = date || formatISTDate(ist);
+    const timeStr = formatISTTime(ist);
+    const modName = module ? `${module} — ${MODULE_NAMES[module] || module}` : 'Update';
 
     const msg = [
       `Emp: ${empName} (${empId})`,
@@ -60,7 +69,7 @@ const notifyHod = async ({ empId, empName, dept, shift, module, deptType, date }
       `Shift: ${shift}`,
       `Module: ${modName}`,
       `Date: ${dateStr}`,
-      `Time: ${timeStr}`,
+      `Time: ${timeStr} IST`,
     ].join(' | ');
 
     await HodNotification.create({
@@ -72,7 +81,7 @@ const notifyHod = async ({ empId, empName, dept, shift, module, deptType, date }
       module:    module    || null,
       deptType:  deptType  || 'qdsh',
       message:   msg,
-      timestamp: now,
+      timestamp: new Date(),
       read:      false,
     });
   } catch (err) {
@@ -80,4 +89,4 @@ const notifyHod = async ({ empId, empName, dept, shift, module, deptType, date }
   }
 };
 
-module.exports = { checkTimeLock, createAuditLog, notifyHod };
+module.exports = { checkTimeLock, createAuditLog, notifyHod, nowIST, formatISTTime, formatISTDate };
