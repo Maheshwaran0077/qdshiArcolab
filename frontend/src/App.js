@@ -350,7 +350,7 @@ const ShiftPickerRoute = ({ user }) => {
 };
 
 const ModuleRoute = ({ user }) => {
-  const { shift, dept, module } = useParams();
+  const { shift, dept, module } = useParams(); 
   if (!user) return <Navigate to="/login" />;
   if (!['1','2','3'].includes(shift) || !VALID_DEPTS.includes(dept) || !VALID_MODULES.includes(module)) {
     return <Navigate to="/" />;

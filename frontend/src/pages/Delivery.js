@@ -413,6 +413,10 @@ const DeliveryPage = () => {
             className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-full text-xs font-bold shadow-sm transition-all">
             <Download size={13} /> <span className="hidden sm:inline">Shiftwise</span>
           </button>
+          <button onClick={downloadAllShiftsCSV}
+            className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-full text-xs font-bold shadow-sm transition-all">
+            <Download size={13} /> <span className="hidden sm:inline">Overall</span>
+          </button>
           {canEdit && (
             <button onClick={() => setIsModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 sm:px-7 py-2 rounded-full text-[11px] font-black uppercase shadow-md transition-all active:scale-95">
               <span className="hidden sm:inline">Update Metrics</span><span className="sm:hidden">Update</span>

@@ -340,6 +340,10 @@ const QualityPage = () => {
             className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-full font-bold text-xs shadow-sm transition-all">
             <Download size={13}/> <span className="hidden sm:inline">Shiftwise</span>
           </button>
+          <button onClick={downloadAllShiftsCSV}
+            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-full font-bold text-xs shadow-sm transition-all">
+            <Download size={13}/> <span className="hidden sm:inline">Overall</span>
+          </button>
           {canUpdate && (
             <button
               onClick={() => setIsModalOpen(true)}
