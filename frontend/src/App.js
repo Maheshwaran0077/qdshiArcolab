@@ -43,11 +43,13 @@ const VALID_MODULES = ['q', 'd', 's', 'h'];
 // COMPONENT: CORE QDSH RING CONTAINER (LIVE DATA)
 // ─────────────────────────────────────────────
 const AgginementRingCard = ({ mod, onSelect, liveMetrics, loading }) => {
+  // Defensive fallbacks to gracefully handle 0 entries or loading cycles smoothly
   const alertPercent = liveMetrics ? Number(liveMetrics.alertPercent ?? 0) : 0;
   const successPercent = liveMetrics ? Number(liveMetrics.successPercent ?? 100) : 100;
   const totalAlerts = liveMetrics ? Number(liveMetrics.totalAlerts ?? 0) : 0;
   const totalSuccess = liveMetrics ? Number(liveMetrics.totalSuccess ?? 0) : 0;
 
+  // Circular math for structural SVG ring representation
   const radius = 38;
   const circumference = 2 * Math.PI * radius;
 
@@ -67,6 +69,7 @@ const AgginementRingCard = ({ mod, onSelect, liveMetrics, loading }) => {
         <p className="text-[10px] font-bold text-slate-400 uppercase">Operational Pillar</p>
       </div>
 
+      {/* Circle Metric Display Frame */}
       <div className="relative w-40 h-40 flex items-center justify-center bg-slate-50 rounded-full shadow-inner border border-slate-100">
         {loading ? (
           <div className="absolute text-slate-400 text-xs font-bold uppercase animate-pulse">
@@ -92,6 +95,7 @@ const AgginementRingCard = ({ mod, onSelect, liveMetrics, loading }) => {
           />
           {!loading && (
             <>
+              {/* Success Ring */}
               <circle
                 cx="50"
                 cy="50"
@@ -103,6 +107,7 @@ const AgginementRingCard = ({ mod, onSelect, liveMetrics, loading }) => {
                 strokeDashoffset={successOffset}
                 strokeLinecap="round"
               />
+              {/* Alert Ring */}
               <circle
                 cx="50"
                 cy="50"
@@ -120,6 +125,7 @@ const AgginementRingCard = ({ mod, onSelect, liveMetrics, loading }) => {
         </svg>
       </div>
 
+      {/* REAL-TIME COUNTS SUMMARY VIEW */}
       <div className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-3 grid grid-cols-2 gap-2 text-center">
         <div className="border-r border-slate-200/60">
           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Success Logs</p>
@@ -153,7 +159,11 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchLivePillarMetrics = async () => {
       try {
-const response = await fetch('/api/metrics/global-pillars');
+        // Only set back to loading if it's the very first time running to avoid dashboard flashes during intervals
+        if (!metrics) setLoading(true);
+
+        const response = await fetch(`${API}/api/metrics/global-pillars`);
+
         if (!response.ok) {
           throw new Error(`HTTP network error status: ${response.status}`);
         }
@@ -174,13 +184,13 @@ const response = await fetch('/api/metrics/global-pillars');
     };
 
     fetchLivePillarMetrics();
-    const interval = setInterval(fetchLivePillarMetrics, 10000); // Polling every 10s
-    
+    const interval = setInterval(fetchLivePillarMetrics, 10000); // Polling every 10s to reflect dynamic structural shifts
     return () => clearInterval(interval);
-  }, []); // ✅ FIXED: Empty dependency array stops the infinite loop
+  }, [metrics]);
 
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 lg:py-10">
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-6">
         <div>
           <h1 className="text-2xl lg:text-4xl font-black text-slate-800 uppercase tracking-tighter">
@@ -199,6 +209,9 @@ const response = await fetch('/api/metrics/global-pillars');
         </div>
       </div>
 
+
+
+      {/* PRIMARY MODULE KPI TRACKERS SECTIONS */}
       <div className="mb-6 ">
         <span className="text-[10px] lg:text-xs font-black uppercase tracking-[0.3em] text-slate-400 block mb-5">
           Core Performance Pillars
@@ -216,6 +229,7 @@ const response = await fetch('/api/metrics/global-pillars');
         </div>
       </div>
 
+      {/* Alternate Global Ideation Actions Area */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
         <motion.div
           whileHover={{ y: -4 }}
@@ -233,8 +247,8 @@ const response = await fetch('/api/metrics/global-pillars');
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 block mb-1">Assigned Security Clearance</span>
           <span className="text-sm font-black text-slate-700 uppercase">Enterprise Standard User Profile</span>
         </div>
-      </div>
 
+      </div>
       <div className="mb-8">
         <span className="text-[10px] lg:text-xs font-black uppercase tracking-[0.3em] text-slate-400 block mb-3 mt-3">
           Special Departments
@@ -372,7 +386,7 @@ function App() {
         <Routes>
           <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
           <Route path="/" element={!user ? <Navigate to="/login" /> : <Dashboard />} />
-          <Route path="/portal/pillar/:module" element={user ? <PillarDepartmentsPage /> : <Navigate to="/logintoggle" />} />
+          <Route path="/portal/pillar/:module" element={user ? <PillarDepartmentsPage /> : <Navigate to="/login" />} />
           <Route path="/admin" element={user?.role === 'superadmin' ? <SuperAdminDashboard /> : <Navigate to="/" />} />
           <Route path="/hod-dashboard" element={user?.role === 'hod' ? <HodDashboard /> : <Navigate to="/" />} />
           <Route path="/i" element={user ? <Idea /> : <Navigate to="/login" />} />
