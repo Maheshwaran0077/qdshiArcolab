@@ -92,8 +92,8 @@ const IssuesTable = ({ issues }) => {
                     {rows.map((r, i) => (
                         <tr key={i}>
                             <td className="text-center">{r.date || '\u00A0'}</td>
-                            <td className="truncate max-w-[80px]" title={r.challenge}>{r.challenge}</td>
                             <td className="truncate max-w-[50px]">{r.owner}</td>
+                            <td className="truncate max-w-[80px]" title={r.challenge}>{r.challenge}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -112,20 +112,18 @@ const ActionTable = ({ actions }) => {
                 <thead>
                     <tr className="bg-slate-100">
                         <th className="text-center" style={{width: '15%'}}>Time</th>
-                        <th className="text-center" style={{width: '40%'}}>Action</th>
-                        <th className="text-center" style={{width: '15%'}}>Owner</th>
-                        <th className="text-center" style={{width: '15%'}}>Target</th>
-                        <th className="text-center" style={{width: '15%'}}>Status</th>
-                    </tr>
+                        <th className="text-center" style={{width: '45%'}}>Action</th>
+                        <th className="text-center" style={{width: '25%'}}>Owner</th>
+                      </tr>
                 </thead>
                 <tbody>
                     {rows.map((r, i) => (
                         <tr key={i}>
-                            <td className="text-center">{r.date || '\u00A0'}</td>
+                            <td className="text-center">{r.date || '\u00A0'}</td>                    
+                                    <td className="truncate max-w-[30px]">{r.owner}</td>
+
                             <td className="truncate max-w-[70px]" title={r.action}>{r.action}</td>
-                            <td className="truncate max-w-[30px]">{r.owner}</td>
-                            <td>{r.target}</td>
-                            <td>{r.status}</td>
+                             
                         </tr>
                     ))}
                 </tbody>

@@ -22,6 +22,9 @@ const { initWatchdogScheduler } = require('./utils/watchdogScheduler');
 
 const app = express();
 
+const helmet = require('helmet');
+app.use(helmet({ contentSecurityPolicy: false }));
+
 app.use(cors({
   origin: process.env.FRONTEND_URL || '*',
   credentials: true,

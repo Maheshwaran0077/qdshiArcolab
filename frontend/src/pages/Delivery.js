@@ -3,6 +3,7 @@ import { useNavigate, useParams as useRParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Star, Activity, Clock, Calendar, TrendingUp, Trash2, Download } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid, YAxis, Legend, Tooltip } from 'recharts';
 import CircularTracker from '../components/CircularTracker';
+import PageLoader from '../components/PageLoader';
 import { dashboardMetrics as initialData } from '../dashboardData';
 
 const API_BASE = `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/metrics`;
@@ -363,9 +364,8 @@ const DeliveryPage = () => {
     } catch { alert('Failed to download all-shifts data'); }
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-black text-emerald-500 animate-pulse bg-slate-50">LOADING SYSTEM...</div>;
-
   return (
+    <PageLoader loading={loading}>
     <div ref={reportRef} className="min-h-screen bg-[#F8FAFC] font-sans flex flex-col text-slate-900">
       {/* Custom Styled Alert Popup */}
       {deleteConfig.isOpen && (
@@ -611,6 +611,7 @@ const DeliveryPage = () => {
         </div>
       )}
     </div>
+    </PageLoader>
   );
 };
 
