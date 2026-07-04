@@ -35,27 +35,68 @@ export default function PlantDashboard() {
     const input = document.getElementById('dashboard-table-container');
     if (!input) return;
     
-    // Temporarily fix styles for html2canvas
+    // Temporarily expand container so html2canvas captures full table
     const origOverflow = input.style.overflow;
+    const origHeight = input.style.height;
     const origWidth = input.style.width;
     
     input.style.overflow = 'visible';
+    input.style.height = 'auto';
     input.style.width = 'max-content';
 
     try {
-      const canvas = await html2canvas(input, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      const canvas = await html2canvas(input, { 
+        scale: 2, 
+        useCORS: true, 
+        backgroundColor: '#ffffff',
+        scrollY: 0,
+        windowHeight: input.scrollHeight + 200
+      });
+      
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('l', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      
-      const finalWidth = pdfWidth - 10;
-      const finalHeight = (canvas.height * finalWidth) / canvas.width;
-      
-      pdf.addImage(imgData, 'PNG', 5, 5, finalWidth, finalHeight);
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const margin = 5;
+
+      // Scale image to fit PDF width
+      const imgWidthOnPage = pdfWidth - margin * 2;
+      const imgHeightOnPage = (canvas.height * imgWidthOnPage) / canvas.width;
+
+      // If the full image fits on one page, just add it
+      if (imgHeightOnPage <= pdfHeight - margin * 2) {
+        pdf.addImage(imgData, 'PNG', margin, margin, imgWidthOnPage, imgHeightOnPage);
+      } else {
+        // Split into multiple pages
+        const pageContentHeight = pdfHeight - margin * 2; // usable height per page in mm
+        // How many canvas pixels correspond to one PDF page height
+        const canvasPixelsPerPage = (pageContentHeight / imgWidthOnPage) * canvas.width;
+        const totalPages = Math.ceil(canvas.height / canvasPixelsPerPage);
+
+        for (let page = 0; page < totalPages; page++) {
+          if (page > 0) pdf.addPage();
+
+          // Crop a slice of the canvas for this page
+          const srcY = page * canvasPixelsPerPage;
+          const srcH = Math.min(canvasPixelsPerPage, canvas.height - srcY);
+
+          const sliceCanvas = document.createElement('canvas');
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = srcH;
+          const ctx = sliceCanvas.getContext('2d');
+          ctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+
+          const sliceImgData = sliceCanvas.toDataURL('image/png');
+          const sliceHeightOnPage = (srcH * imgWidthOnPage) / canvas.width;
+          pdf.addImage(sliceImgData, 'PNG', margin, margin, imgWidthOnPage, sliceHeightOnPage);
+        }
+      }
+
       pdf.save(`Plant_Dashboard_${year}.pdf`);
     } finally {
       // Restore styles
       input.style.overflow = origOverflow;
+      input.style.height = origHeight;
       input.style.width = origWidth;
     }
   };

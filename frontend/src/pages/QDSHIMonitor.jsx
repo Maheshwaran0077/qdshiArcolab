@@ -17,7 +17,8 @@ const DailyCircle = ({ letter, selectedMonthIdx, selectedYear, colors }) => {
         const cx = center + dotRadius * Math.cos(angle);
         const cy = center + dotRadius * Math.sin(angle);
         
-        const fill = colors && colors[i] ? colors[i] : '#fff';
+        // Default: black — only turns green (target met) or red (alert) based on real data
+        const fill = colors && colors[i] ? colors[i] : '#222';
         
         return (
             <circle key={i} cx={cx} cy={cy} r={3.5} fill={fill} stroke="#555" strokeWidth="1" />
@@ -257,39 +258,52 @@ export default function QDSHIMonitor() {
     const shiftDisplayName = activeCarouselShift === '1' ? 'Shift 1' : activeCarouselShift === '2' ? 'Shift 2' : 'Shift 3';
 
     const getColors = (rows, type) => {
-        const colors = Array(31).fill('#fff');
+        // All dots start black — only override with green/red when real data exists
+        const colors = Array(31).fill('#222');
         const today = new Date();
         const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         
         rows.forEach((row, idx) => {
             const date = new Date(currentYear, currentMonthIdx, idx + 1);
-            if (date > todayDate) return;
+            if (date > todayDate) return; // future days stay black
             
             let isRed = false;
-            let hasData = false;
+            let isGreen = false;
             
             if (type === 'Q') {
                 const val = row[0];
-                if (val === 'HE' || val === 'PE' || val === '⚠️') isRed = true;
-                if (val === '✅' || val === 'HE' || val === 'PE' || val === '⚠️') hasData = true;
+                // Only green if explicitly target met
+                if (val === '✅') isGreen = true;
+                // Red if deviation logged
+                else if (val === 'HE' || val === 'PE' || val === '⚠️') isRed = true;
+                // No data logged for that day — stays black
             } else if (type === 'D') {
-                if (row.plan > 0 || row.actual > 0) hasData = true;
-                if (row.actual < row.plan && row.plan > 0) isRed = true;
+                if (row.plan > 0 || row.actual > 0) {
+                    // Has data: green if actual >= plan, red if below
+                    if (row.actual < row.plan) isRed = true;
+                    else isGreen = true;
+                }
+                // No data — stays black
             } else if (type === 'S') {
                 if (row) {
-                    hasData = true;
                     if (row.nm > 0 || row.ua > 0 || row.lti > 0) isRed = true;
+                    else isGreen = true; // data exists but zero incidents = safe day
                 }
+                // null row (no record) — stays black
             } else if (type === 'H') {
-                if (row.total > 0) hasData = true;
-                if (row.absent > 0) isRed = true;
+                if (row.total > 0) {
+                    if (row.absent > 0) isRed = true;
+                    else isGreen = true;
+                }
+                // No data — stays black
             }
             
             if (isRed) {
-                colors[idx] = '#dc3545'; // Red
-            } else if (hasData || date < todayDate) {
-                colors[idx] = '#28a745'; // Green
+                colors[idx] = '#dc3545'; // Red — alert / target not met
+            } else if (isGreen) {
+                colors[idx] = '#28a745'; // Green — target met
             }
+            // else stays black (#222)
         });
         return colors;
     };
