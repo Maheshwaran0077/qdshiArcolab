@@ -109,7 +109,8 @@ export default function PlantDashboard() {
     worksheet.addRow(headers);
     worksheet.getRow(1).font = { bold: true };
     
-    data.forEach(row => {
+    data.forEach(row => {           
+      
       const sorted = getSortedMonths(row);
       // Plan row — include YTD plan
       const planYtd = row.ytd?.plan?.value || '-';
