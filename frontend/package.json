@@ -21,7 +21,8 @@
     "react-scripts": "5.0.1",
     "recharts": "^3.8.0",
     "sweetalert2": "^11.26.24",
-    "sweetalert2-react-content": "^5.1.2"
+    "sweetalert2-react-content": "^5.1.2",
+    "xlsx": "^0.18.5"
   },
   "scripts": {
     "start": "react-scripts start",

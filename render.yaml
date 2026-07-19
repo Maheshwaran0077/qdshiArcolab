@@ -1,27 +1,15 @@
 services:
   - type: web
-    name: qdshi-management-portal
-    env: node
+    name: daily-huddles
+    runtime: node
     plan: free
     buildCommand: npm run build
     startCommand: npm start
     envVars:
       - key: MONGO_URI
-        sync: false
+        value: mongodb+srv://testArcolab:testArcolab@testarcolab.ddnjtlw.mongodb.net/
       - key: JWT_SECRET
         generateValue: true
-      - key: REACT_APP_API_URL
-        sync: false
-      - key: SMTP_HOST
-        value: smtp.gmail.com
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_SECURE
-        value: "false"
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASS
-        sync: false
       - key: GOOGLE_FORM_URL
         value: https://docs.google.com/forms/d/e/1FAIpQLSet3BnTdFPhnlYtQFurTyK01HhbL2kifldCUtJUT7B7w1aRtQ/formResponse
       - key: GOOGLE_SHEET_CSV_URL
@@ -36,3 +24,13 @@ services:
         value: entry.263303803
       - key: FORM_ENTRY_DEPT
         value: entry.96068610
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        value: mageshedu77@gmail.com
+      - key: SMTP_PASS
+        value: jluu rrha mjfb uydd

@@ -4,7 +4,7 @@ import { Lock, Mail, Loader2, Eye, EyeOff } from 'lucide-react';
 import axios from 'axios';
 import logo from '../assest/pivotPathLogo.svg';
 
-const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API = process.env.REACT_APP_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin);
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');

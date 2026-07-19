@@ -21,7 +21,7 @@ import PivotPathLogo from './assest/pivotPathLogo.svg';
 import { DEPARTMENTS, MODULES, SPECIAL_DEPARTMENTS, ALL_DEPARTMENTS } from './departments';
 
 export { DEPARTMENTS, MODULES, SPECIAL_DEPARTMENTS, ALL_DEPARTMENTS };
-const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API = process.env.REACT_APP_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin);
 const DEPT_BG = {
   emerald: 'from-emerald-500 to-emerald-700 shadow-emerald-200',   // FGMW
   indigo: 'from-indigo-500 to-indigo-700 shadow-indigo-200',     // PMW

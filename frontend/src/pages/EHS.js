@@ -5,7 +5,7 @@ import { Download } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
-const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API = process.env.REACT_APP_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin);
 
 const EHS_ROWS = [
   { category: 'Quality Compliance',      kpiMetric: 'EHS-Related Observation (Yesterday)' },

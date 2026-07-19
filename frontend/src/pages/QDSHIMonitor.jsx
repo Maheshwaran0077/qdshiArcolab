@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import './QDSHIMonitor.css';
-import { Search, ChevronDown, CheckCircle, Clock, AlertTriangle, Battery, Shield, Info, Activity } from 'lucide-react';
+import { Search, ChevronDown, CheckCircle, Clock, AlertTriangle, Battery, Shield, Info, Activity, Maximize2, Minimize2, Lock, Unlock } from 'lucide-react';
 import axios from 'axios';
 import logo from '../assest/pivotPathLogo.svg';
 
-const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API = process.env.REACT_APP_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin);
 
 // Reusable Circle Component
 const DailyCircle = ({ letter, selectedMonthIdx, selectedYear, colors }) => {
@@ -17,7 +17,6 @@ const DailyCircle = ({ letter, selectedMonthIdx, selectedYear, colors }) => {
         const cx = center + dotRadius * Math.cos(angle);
         const cy = center + dotRadius * Math.sin(angle);
         
-        // Default: black — only turns green (target met) or red (alert) based on real data
         const fill = colors && colors[i] ? colors[i] : '#222';
         
         return (
@@ -110,16 +109,14 @@ const ActionTable = ({ actions }) => {
                         <th className="text-center" style={{width: '15%'}}>Time</th>
                         <th className="text-center" style={{width: '45%'}}>Action</th>
                         <th className="text-center" style={{width: '25%'}}>Owner</th>
-                      </tr>
+                    </tr>
                 </thead>
                 <tbody>
                     {rows.map((r, i) => (
                         <tr key={i}>
                             <td className="text-center">{r.date || '\u00A0'}</td>                    
-                                    <td className="truncate max-w-[30px]">{r.owner}</td>
-
+                            <td className="truncate max-w-[30px]">{r.owner}</td>
                             <td className="truncate max-w-[70px]" title={r.action}>{r.action}</td>
-                             
                         </tr>
                     ))}
                 </tbody>
@@ -129,7 +126,7 @@ const ActionTable = ({ actions }) => {
 };
 
 export default function QDSHIMonitor() {
-    const [dept, setDept] = useState('pop'); // Default to post-production based on image
+    const [dept, setDept] = useState('pop');
     const [selectedDateStr, setSelectedDateStr] = useState(() => {
         const d = new Date();
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -137,6 +134,9 @@ export default function QDSHIMonitor() {
 
     const [metrics, setMetrics] = useState([]);
     const [healthData, setHealthData] = useState([]);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    
+    const boardRef = useRef(null);
     
     const DEPT_MAP = {
         'fgmw': 'FG Warehouse', 'pmw': 'PM Warehouse', 'rmw': 'RM Warehouse',
@@ -152,11 +152,35 @@ export default function QDSHIMonitor() {
     const [activeCarouselShift, setActiveCarouselShift] = useState('1');
     const [isHovered, setIsHovered] = useState(false);
 
+    // Watch for native browser window changes (like pressing Esc to leave fullscreen)
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(!!document.fullscreenElement);
+        };
+
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, []);
+
+    const toggleFullscreen = async () => {
+        if (!document.fullscreenElement) {
+            try {
+                if (boardRef.current) {
+                    await boardRef.current.requestFullscreen();
+                }
+            } catch (err) {
+                console.error(`Error attempting to enable fullscreen layout: ${err.message}`);
+            }
+        } else {
+            document.exitFullscreen();
+        }
+    };
+
     useEffect(() => {
         if (isHovered) return;
         const interval = setInterval(() => {
             setActiveCarouselShift(prev => prev === '1' ? '2' : prev === '2' ? '3' : '1');
-        }, 5000); // 5 seconds carousel
+        }, 5000);
         return () => clearInterval(interval);
     }, [isHovered]);
 
@@ -202,8 +226,8 @@ export default function QDSHIMonitor() {
             const dayIdx = d.getDate() - 1;
             if (dayIdx >= 0 && dayIdx < 31) {
                 qRows[dayIdx][0] = log.reason === 'Target Met' ? '✅' : 
-                                      log.deviationType === 'Human Error' ? 'HE' : 
-                                      log.deviationType === 'Process Error' ? 'PE' : '⚠️';
+                                  log.deviationType === 'Human Error' ? 'HE' : 
+                                  log.deviationType === 'Process Error' ? 'PE' : '⚠️';
             }
         }
     });
@@ -240,7 +264,6 @@ export default function QDSHIMonitor() {
 
     // H Rows
     const hRows = Array.from({length: 31}, () => ({ total: 0, absent: 0 }));
-    // healthData array corresponds to [health1, health2, health3] roughly in order, but we can check the shift in the data
     const activeHealthRecord = healthData.find(h => String(h.shift) === activeCarouselShift);
     if (activeHealthRecord) {
         const days = activeHealthRecord?.days || [];
@@ -258,52 +281,43 @@ export default function QDSHIMonitor() {
     const shiftDisplayName = activeCarouselShift === '1' ? 'Shift 1' : activeCarouselShift === '2' ? 'Shift 2' : 'Shift 3';
 
     const getColors = (rows, type) => {
-        // All dots start black — only override with green/red when real data exists
         const colors = Array(31).fill('#222');
         const today = new Date();
         const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         
         rows.forEach((row, idx) => {
             const date = new Date(currentYear, currentMonthIdx, idx + 1);
-            if (date > todayDate) return; // future days stay black
+            if (date > todayDate) return;
             
             let isRed = false;
             let isGreen = false;
             
             if (type === 'Q') {
                 const val = row[0];
-                // Only green if explicitly target met
                 if (val === '✅') isGreen = true;
-                // Red if deviation logged
                 else if (val === 'HE' || val === 'PE' || val === '⚠️') isRed = true;
-                // No data logged for that day — stays black
             } else if (type === 'D') {
                 if (row.plan > 0 || row.actual > 0) {
-                    // Has data: green if actual >= plan, red if below
                     if (row.actual < row.plan) isRed = true;
                     else isGreen = true;
                 }
-                // No data — stays black
             } else if (type === 'S') {
                 if (row) {
                     if (row.nm > 0 || row.ua > 0 || row.lti > 0) isRed = true;
-                    else isGreen = true; // data exists but zero incidents = safe day
+                    else isGreen = true;
                 }
-                // null row (no record) — stays black
             } else if (type === 'H') {
                 if (row.total > 0) {
                     if (row.absent > 0) isRed = true;
                     else isGreen = true;
                 }
-                // No data — stays black
             }
             
             if (isRed) {
-                colors[idx] = '#dc3545'; // Red — alert / target not met
+                colors[idx] = '#dc3545';
             } else if (isGreen) {
-                colors[idx] = '#28a745'; // Green — target met
+                colors[idx] = '#28a745';
             }
-            // else stays black (#222)
         });
         return colors;
     };
@@ -313,17 +327,12 @@ export default function QDSHIMonitor() {
     const sColors = getColors(sRows, 'S');
     const hColors = getColors(hRows, 'H');
 
-    // Helper functions for extracting issues and actions per pillar
     const getIssues = (letter) => {
         let issuesList = [];
         const m = metrics.find(metric => metric.letter === letter);
         if (m) {
             ['1', '2', '3'].forEach(shift => {
                 (m.shifts?.[shift]?.staffLogs || []).forEach(log => {
-                    // Filter logs based on selected month? 
-                    // Usually issues board just shows the most recent ones overall, but we could filter by month.
-                    // The time field in staffLog doesn't always have strict ISO dates, sometimes it's just "06:15 PM" depending on how user entered it. 
-                    // We'll just show the latest chronologically across all time or rely on backend.
                     issuesList.push({ date: log.time || '', challenge: log.name || '', owner: log.action || '' });
                 });
             });
@@ -357,7 +366,11 @@ export default function QDSHIMonitor() {
     const hActions = getActions('H');
 
     return (
-        <div className="qdshi-board-container relative">
+        <div 
+            ref={boardRef} 
+            className={`qdshi-board-container relative ${isFullscreen ? 'bg-slate-900 p-6 overflow-y-auto w-full h-full' : ''}`}
+        >
+            {/* Shift Indicators */}
             <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 flex gap-2">
                 {['1', '2', '3'].map(s => (
                     <div 
@@ -370,7 +383,8 @@ export default function QDSHIMonitor() {
                 ))}
             </div>
 
-            <div className="absolute top-4 right-4 z-10 flex gap-3">
+            {/* Config & Controls */}
+            <div className="absolute top-4 right-4 z-10 flex gap-3 items-center">
                 <input 
                     type="month" 
                     value={selectedDateStr}
@@ -386,9 +400,19 @@ export default function QDSHIMonitor() {
                         <option key={k} value={k}>{v}</option>
                     ))}
                 </select>
+                
+                {/* Full Screen Lock/Unlock Toggle Button */}
+                <button
+                    onClick={toggleFullscreen}
+                    className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 p-1.5 rounded-lg shadow-sm outline-none transition-colors flex items-center justify-center"
+                    title={isFullscreen ? "Unlock Screen Layout" : "Lock Screen to Fullscreen"}
+                >
+                    {isFullscreen ? <Unlock size={16} /> : <Lock size={16} />}
+                </button>
             </div>
 
-            <div className="qdshi-board-inner" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
+            {/* Inner Content Layout Container */}
+            <div className="qdshi-board-inner shadow-2xl rounded-xl" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
                 <div className="board-screw-bl"></div>
                 <div className="board-screw-br"></div>
                 
@@ -486,10 +510,10 @@ export default function QDSHIMonitor() {
                                 }}
                                 getCellClass={(row, idx) => {
                                     if (!row) return '';
-                                    if (idx === 0 && row.nm > 0) return 'bg-amber-100 text-amber-800'; // near miss warning
-                                    if (idx === 1 && row.ua > 0) return 'bg-orange-100 text-orange-800'; // unsafe act warning
-                                    if (idx === 2 && row.lti > 0) return 'bg-red-100 text-red-800'; // LTI critical
-                                    if (idx === 2 && row.lti === 0) return 'bg-emerald-100 text-emerald-800'; // Zero LTI is good
+                                    if (idx === 0 && row.nm > 0) return 'bg-amber-100 text-amber-800';
+                                    if (idx === 1 && row.ua > 0) return 'bg-orange-100 text-orange-800';
+                                    if (idx === 2 && row.lti > 0) return 'bg-red-100 text-red-800';
+                                    if (idx === 2 && row.lti === 0) return 'bg-emerald-100 text-emerald-800';
                                     return '';
                                 }}
                             />
