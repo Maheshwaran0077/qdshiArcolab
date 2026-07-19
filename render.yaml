@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: qdshi-management-portal
+    env: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: REACT_APP_API_URL
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: GOOGLE_FORM_URL
+        value: https://docs.google.com/forms/d/e/1FAIpQLSet3BnTdFPhnlYtQFurTyK01HhbL2kifldCUtJUT7B7w1aRtQ/formResponse
+      - key: GOOGLE_SHEET_CSV_URL
+        value: https://docs.google.com/spreadsheets/d/1lMRG2n23GSlHGymELXn7HDguAqqOELymMvu71wgq1L8/export?format=csv&gid=0
+      - key: FORM_ENTRY_EMPID
+        value: entry.2144390010
+      - key: FORM_ENTRY_PROBLEM
+        value: entry.1967885243
+      - key: FORM_ENTRY_SOLUTION
+        value: entry.1710292858
+      - key: FORM_ENTRY_BENEFIT
+        value: entry.263303803
+      - key: FORM_ENTRY_DEPT
+        value: entry.96068610
