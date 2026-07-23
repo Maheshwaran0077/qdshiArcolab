@@ -1,15 +1,19 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useParams as useRParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Star, Activity, Clock, Calendar, TrendingUp, Trash2, Download } from 'lucide-react';
+import Swal from 'sweetalert2';
+import withReactContent from 'sweetalert2-react-content';
+import { ChevronLeft, ChevronRight, Star, Activity, Clock, Calendar, TrendingUp, Trash2, Download, X } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid, YAxis, Legend, Tooltip } from 'recharts';
 import CircularTracker from '../components/CircularTracker';
 import PageLoader from '../components/PageLoader';
 import { dashboardMetrics as initialData } from '../dashboardData';
 
+const MySwal = withReactContent(Swal);
+
 const API_BASE = `${process.env.REACT_APP_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin)}/api/metrics`;
 const API = process.env.REACT_APP_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin);
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const DEPT_FULL = { fgmw: 'Finished Good Warehouse', pmw: 'Packing Material Warehouse', rmw: 'Raw Material Warehouse', qcmad: 'QC & Microbiology & AD Lab', pro: 'Production', pop: 'Post Production', ppp: 'Primary Packing Production', spp: 'Secondary Packing Production', fac: 'Facilities' };
+const DEPT_FULL = { fgmw: 'Finished Goods Material Warehouse', fg: 'Finished Goods Material Warehouse', pmw: 'Packing Material Warehouse', pm: 'Packing Material Warehouse', rmw: 'Raw Material Warehouse', rm: 'Raw Material Warehouse', qcmad: 'QC & Microbiology & AD Lab', pro: 'Production', pop: 'Post Production', ppp: 'Primary Packing Production', spp: 'Secondary Packing Production', fac: 'Facilities' };
 
 // Department-specific Delivery metric labels per GMP document
 // delay*Type: 'time' = red if >0, unit=min | 'zero' = red if >0, unit=count/batches | 'pct' = red if <100, unit=%
@@ -124,7 +128,7 @@ const DeliveryPage = () => {
 
   const userDepts = (user?.department || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   const isAssignedDept = isSuperAdmin || userDepts.includes(activeDept.toLowerCase());
-  const canEdit = (isSupervisor && isAssignedDept) || isSuperAdmin;
+  const canEdit = ((isSupervisor && isAssignedDept) || isSuperAdmin) && activeShift !== 'overall';
   const deptLabels = DEPT_DELIVERY_LABELS[activeDept] || DEPT_DELIVERY_LABELS.fgmw;
 
   // --- State ---
@@ -149,6 +153,11 @@ const DeliveryPage = () => {
   const [breakdowns, setBreakdowns] = useState('');
   const [pbrDelay, setPbrDelay] = useState('');
   const [qcDelay, setQcDelay] = useState('');
+  const [assignedId, setAssignedId] = useState('');
+  const [assignedName, setAssignedName] = useState('');
+  const [reporterName, setReporterName] = useState('');
+  const [reporterId, setReporterId] = useState('');
+  const [alertBrief, setAlertBrief] = useState('');
 
   const [staffLogs, setStaffLogs] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
@@ -159,8 +168,23 @@ const DeliveryPage = () => {
   // --- Memos ---
   const dData = useMemo(() => {
     const found = metrics.find(m => m.letter === 'D') || metrics[1];
-    return { ...found, issueLogs: Array.isArray(found.issueLogs) ? found.issueLogs : [] };
-  }, [metrics]);
+    if (activeShift === 'overall') {
+      const allLogs = [];
+      const staffLogsLocal = [];
+      const activityLogsLocal = [];
+      ['1', '2', '3'].forEach(s => {
+        const shiftData = found.shifts?.[s] || {};
+        const logs = (shiftData.issueLogs || []).map(l => ({ ...l, shift: s }));
+        allLogs.push(...logs);
+        if (Array.isArray(shiftData.staffLogs)) staffLogsLocal.push(...shiftData.staffLogs);
+        if (Array.isArray(shiftData.activityLogs)) activityLogsLocal.push(...shiftData.activityLogs);
+      });
+      return { ...found, issueLogs: allLogs, staffLogs: staffLogsLocal, activityLogs: activityLogsLocal };
+    } else {
+      const shiftData = found.shifts?.[activeShift] || {};
+      return { ...found, ...shiftData, issueLogs: Array.isArray(shiftData.issueLogs) ? shiftData.issueLogs : [] };
+    }
+  }, [metrics, activeShift]);
 
   const allYearLogs = useMemo(() => {
     return MONTHS.map((monthName, index) => {
@@ -174,10 +198,8 @@ const DeliveryPage = () => {
     });
   }, [dData.issueLogs, viewYear]);
 
-  // --- Improved Deletion Logic (Async Cloud Sync) ---
-  const handleDeleteLog = async () => {
-    const { type, index, rawDate } = deleteConfig;
-    
+  // --- Improved Deletion Logic (Async Cloud Sync with SweetAlert) ---
+  const executeDeleteLog = async (type, index, rawDate) => {
     try {
       if (type === 'staff' || type === 'activity') {
         const setter = type === 'staff' ? setStaffLogs : setActivityLogs;
@@ -195,7 +217,10 @@ const DeliveryPage = () => {
             userRole: user?.role,
           }),
         });
-        if (res.ok) setter(updatedLogs);
+        if (res.ok) {
+          setter(updatedLogs);
+          MySwal.fire('Deleted!', 'Log has been deleted successfully.', 'success');
+        }
       } 
       else if (type === 'dispatch' || type === 'minor') {
         const updatedIssueLogs = dData.issueLogs.filter(l => l.rawDate !== rawDate);
@@ -213,27 +238,183 @@ const DeliveryPage = () => {
           }),
         });
         if (res.ok) {
-          const saved = await res.json();
-          setMetrics(prev => prev.map(m => m.letter === 'D' ? saved : m));
+          await fetchMetrics();
+          MySwal.fire('Deleted!', 'Log has been deleted successfully.', 'success');
         }
       }
       setLastBackupTime(new Date());
-      setDeleteConfig({ isOpen: false, type: null, index: null, rawDate: null });
     } catch (e) {
       alert("Delete operation failed.");
     }
   };
 
+  const handleConfirmDelete = (type, index, rawDate) => {
+    MySwal.fire({
+      title: '<span class="text-sm font-black text-slate-800 uppercase tracking-wider">Are you sure?</span>',
+      text: "Do you want to delete this log entry? This action cannot be undone.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#475569',
+      confirmButtonText: 'YES, DELETE',
+      cancelButtonText: 'CANCEL'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        executeDeleteLog(type, index, rawDate);
+      }
+    });
+  };
+
+  const handleInterceptDelete = (config) => {
+    if (config.isOpen) {
+      handleConfirmDelete(config.type, config.index, config.rawDate);
+    }
+  };
+
+  const handleShowLogDetails = (log) => {
+    MySwal.fire({
+      title: `<span class="text-sm font-black text-slate-800 uppercase tracking-wider">Complaint Detail</span>`,
+      html: `
+        <div class="text-left space-y-3 text-xs p-2">
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Date & Time:</strong> <span class="font-bold text-slate-700">${log.date || ''} ${log.time || ''}</span></div>
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Issue Type:</strong> <span class="font-bold text-slate-700">${log.issueType || 'N/A'}</span></div>
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Reporter:</strong> <span class="font-bold text-slate-700">${log.reporter || 'N/A'}</span></div>
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Assigned To:</strong> <span class="font-bold text-slate-700">${log.assignedName || 'N/A'} (ID: ${log.assignedId || 'N/A'})</span></div>
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Status:</strong> <span class="font-bold ${log.resolved ? 'text-emerald-600' : 'text-rose-600'} uppercase">${log.resolved ? 'Resolved' : 'Pending'}</span></div>
+          <div class="flex justify-between"><strong class="text-slate-500 uppercase">Action Status:</strong> <span class="font-bold text-slate-700">${log.action || 'No action taken yet'}</span></div>
+        </div>
+      `,
+      confirmButtonText: 'CLOSE',
+      confirmButtonColor: '#475569'
+    });
+  };
+
+  const handleShowActionDetails = (log) => {
+    MySwal.fire({
+      title: `<span class="text-sm font-black text-slate-800 uppercase tracking-wider">Action Log Detail</span>`,
+      html: `
+        <div class="text-left space-y-3 text-xs p-2">
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Employee ID:</strong> <span class="font-bold text-slate-700">${log.id || 'N/A'}</span></div>
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Description:</strong> <span class="font-bold text-slate-700">${log.name || 'N/A'}</span></div>
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Action Status:</strong> <span class="font-bold text-slate-700">${log.action || 'N/A'}</span></div>
+          <div class="flex justify-between"><strong class="text-slate-500 uppercase">Time:</strong> <span class="font-bold text-slate-700">${log.time || 'N/A'}</span></div>
+        </div>
+      `,
+      confirmButtonText: 'CLOSE',
+      confirmButtonColor: '#475569'
+    });
+  };
+
+  const handleToggleResolve = async (index, isResolved) => {
+    const confirm = await MySwal.fire({
+      title: 'Are you sure?',
+      text: `Do you want to mark this issue as ${isResolved ? 'Resolved' : 'Pending'}?`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#10B981',
+      cancelButtonColor: '#EF4444',
+      confirmButtonText: 'Yes',
+      cancelButtonText: 'No'
+    });
+    if (!confirm.isConfirmed) return;
+
+    let actionTaken = "";
+    if (isResolved) {
+      const currentIssue = staffLogs[index];
+      actionTaken = `Resolved on ${currentIssue.date || getISTDate()}`;
+    }
+
+    const updatedStaff = [...staffLogs];
+    updatedStaff[index] = { ...updatedStaff[index], resolved: isResolved, action: actionTaken };
+    setStaffLogs(updatedStaff);
+
+    let updatedActivity = [...activityLogs];
+    const issueIdRef = updatedStaff[index].id || updatedStaff[index].assignedId || 'N/A';
+    
+    if (isResolved && actionTaken) {
+      const exists = activityLogs.some(act => act.issueRef === issueIdRef && act.action.startsWith("Resolved"));
+      if (!exists) {
+        const newAct = {
+          id: issueIdRef,
+          name: `Action on ${updatedStaff[index].issueType || 'Issue'}: Resolved`,
+          action: actionTaken,
+          time: getISTTime(),
+          issueRef: issueIdRef
+        };
+        updatedActivity = [newAct, ...updatedActivity];
+        setActivityLogs(updatedActivity);
+      }
+    } else {
+      updatedActivity = activityLogs.filter(act => act.issueRef !== issueIdRef);
+      setActivityLogs(updatedActivity);
+    }
+
+    try {
+      await fetch(`${API_BASE}/staff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ letter: 'D', shift: activeShift, dept: activeDept, logs: updatedStaff, empId: user?.employeeId, empName: user?.name, userRole: user?.role })
+      });
+      await fetch(`${API_BASE}/activity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ letter: 'D', shift: activeShift, dept: activeDept, logs: updatedActivity, empId: user?.employeeId, empName: user?.name, userRole: user?.role })
+      });
+      await fetchMetrics();
+    } catch (e) {
+      alert("Synchronization failed.");
+    }
+  };
+
+  const allShiftsStats = useMemo(() => {
+    let totalSuccess = 0;
+    let totalAlerts = 0;
+    const dMetric = metrics.find(m => m.letter === 'D') || initialData[1];
+    ['1', '2', '3'].forEach(s => {
+      const logs = dMetric.shifts?.[s]?.issueLogs || [];
+      logs.forEach(log => {
+        const logD = new Date(log.rawDate);
+        if (logD.getMonth() === viewMonth && logD.getFullYear() === viewYear) {
+          const plan = Number(log.planned) || 0;
+          const actual = Number(log.dispatched) || 0;
+          const breakdownsVal = Number(log.breakdowns || log.breakdownCount || 0);
+          if (plan > 0 || actual > 0) {
+            const efficiency = (actual / (plan || 1)) * 100;
+            const fail = efficiency < 90 || breakdownsVal > 0;
+            if (fail) totalAlerts++;
+            else totalSuccess++;
+          }
+        }
+      });
+    });
+    const total = totalSuccess + totalAlerts;
+    const successPercent = total ? Math.round((totalSuccess / total) * 100) : 0;
+    return { successPercent, totalSuccess, totalAlerts, total };
+  }, [metrics, viewMonth, viewYear]);
+
   const fetchMetrics = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}?shift=${activeShift}&dept=${activeDept}`);
+      const res = await fetch(`${API_BASE}?dept=${activeDept}`);
       const dbData = await res.json();
       if (dbData && Array.isArray(dbData)) {
         setMetrics(initialData.map(b => dbData.find(d => d.letter === b.letter) || b));
         const dLive = dbData.find(d => d.letter === 'D');
-        setStaffLogs(dLive?.staffLogs || []);
-        setActivityLogs(dLive?.activityLogs || []);
+        if (activeShift === 'overall') {
+          const allStaffLogs = [];
+          const allActivityLogs = [];
+          ['1', '2', '3'].forEach(s => {
+            const activeShiftData = dLive?.shifts?.[s] || {};
+            if (Array.isArray(activeShiftData.staffLogs)) allStaffLogs.push(...activeShiftData.staffLogs);
+            if (Array.isArray(activeShiftData.activityLogs)) allActivityLogs.push(...activeShiftData.activityLogs);
+          });
+          setStaffLogs(allStaffLogs);
+          setActivityLogs(allActivityLogs);
+        } else {
+          const activeShiftData = dLive?.shifts?.[activeShift] || {};
+          setStaffLogs(activeShiftData.staffLogs || []);
+          setActivityLogs(activeShiftData.activityLogs || []);
+        }
       }
     } catch (e) { console.error("Fetch error:", e); } finally { setLoading(false); }
   };
@@ -264,12 +445,26 @@ const DeliveryPage = () => {
   const handleUpdateStatus = async () => {
     if (!plannedCount || !dispatchedCount) return alert("Please enter counts");
     const [y, m, d] = customDate.split('-');
+    
+    const plan = Number(plannedCount);
+    const actual = Number(dispatchedCount);
+    const breakdownsVal = Number(breakdowns || 0);
+    const efficiency = plan > 0 ? (actual / plan) * 100 : 0;
+    const isAlert = efficiency < 90 || breakdownsVal > 0;
+
+    if (isAlert) {
+      if (!reporterName.trim() || !reporterId.trim() || !alertBrief.trim() || !assignedName.trim() || !assignedId.trim()) {
+        alert("Please fill in all alert details (Reporter Name & ID, Alert Brief, and Assigned Employee Name & ID).");
+        return;
+      }
+    }
+
     const newEntry = {
       date: `${d}/${m}/${y}`, 
       rawDate: customDate,
-      planned: Number(plannedCount), 
-      dispatched: Number(dispatchedCount),
-      breakdowns: Number(breakdowns || 0), 
+      planned: plan, 
+      dispatched: actual,
+      breakdowns: breakdownsVal, 
       pbrDelay: Number(pbrDelay || 0), 
       qcDelay: Number(qcDelay || 0)
     };
@@ -278,6 +473,24 @@ const DeliveryPage = () => {
     const idx = updatedLogs.findIndex(l => l.rawDate === customDate); 
     if (idx !== -1) updatedLogs[idx] = newEntry;
     else updatedLogs.push(newEntry);
+
+    let newStaffLogs = [...staffLogs];
+    if (isAlert) {
+      const issueType = breakdownsVal > 0 ? "Machine Breakdown" : "Low Efficiency Delay";
+      const newIssue = {
+        id: assignedId,
+        name: `${alertBrief} (Reported by: ${reporterName} - ID: ${reporterId})`,
+        action: "",
+        time: getISTTime(),
+        resolved: false,
+        issueType: issueType,
+        reporter: `${reporterName} (${reporterId})`,
+        assignedName: assignedName,
+        assignedId: assignedId,
+        date: `${d}/${m}/${y}`
+      };
+      newStaffLogs = [newIssue, ...newStaffLogs];
+    }
 
     try {
       const res = await fetch(`${API_BASE}/update`, {
@@ -293,10 +506,24 @@ const DeliveryPage = () => {
           userRole: user?.role,
         }),
       });
+
+      if (isAlert) {
+        await fetch(`${API_BASE}/staff`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ letter: 'D', shift: activeShift, dept: activeDept, logs: newStaffLogs, empId: user?.employeeId, empName: user?.name, userRole: user?.role }),
+        });
+      }
+
       const result = await res.json();
       if (!res.ok) return alert(result.error || result.message || 'Sync failed.');
-      setMetrics(prev => prev.map(m => m.letter === 'D' ? result : m));
+      await fetchMetrics();
       setIsModalOpen(false);
+      setAssignedId('');
+      setAssignedName('');
+      setReporterName('');
+      setReporterId('');
+      setAlertBrief('');
       setLastBackupTime(new Date());
     } catch (e) { alert('Sync failed.'); }
   };
@@ -323,7 +550,14 @@ const DeliveryPage = () => {
         const idx = d.getDate() - 1;
         const efficiency = (log.dispatched / (log.planned || 1)) * 100;
         const fail = efficiency < 90 || log.breakdowns > 0;
-        if (idx >= 0 && idx < daysInMonth) days[idx] = fail ? 'fail' : 'success';
+        const status = fail ? 'fail' : 'success';
+        if (idx >= 0 && idx < daysInMonth) {
+          if (days[idx] === 'fail' || status === 'fail') {
+            days[idx] = 'fail';
+          } else {
+            days[idx] = 'success';
+          }
+        }
       }
     });
     return days;
@@ -386,7 +620,7 @@ const DeliveryPage = () => {
             
             <div className="space-y-3">
               <button 
-                onClick={handleDeleteLog}
+                onClick={() => handleInterceptDelete({ isOpen: true, type: deleteConfig.type, index: deleteConfig.index, rawDate: deleteConfig.rawDate })}
                 className="w-full bg-rose-500 hover:bg-rose-600 py-4 rounded-2xl font-black text-white text-[11px] uppercase shadow-lg shadow-rose-100 transition-all active:scale-95"
               >
                 Confirm Deletion
@@ -403,7 +637,7 @@ const DeliveryPage = () => {
       )}
 
       <nav className="flex justify-between items-center px-4 sm:px-6 py-3 bg-white border-b border-slate-200 sticky top-0 z-50">
-        <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-slate-500 font-bold text-xs uppercase hover:text-emerald-600 transition-colors">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-slate-500 font-bold text-xs uppercase hover:text-emerald-600 transition-colors">
           <ChevronLeft size={18} /> <span className="hidden sm:inline">Back</span>
         </button>
         <div className="flex gap-2 items-center">
@@ -435,14 +669,28 @@ const DeliveryPage = () => {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Delivery</h1>
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{DEPT_FULL[activeDept]} · Shift {activeShift}</p>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{DEPT_FULL[activeDept]} · {activeShift === 'overall' ? 'Overall' : `Shift ${activeShift}`}</p>
+          </div>
+
+          {/* Centered Shift vs All-Shifts Overall performance */}
+          <div className="flex items-center gap-6 justify-center sm:mx-auto select-none">
+            <div className="text-center px-4 border-r border-slate-200">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">{activeShift === 'overall' ? 'Overall' : `Shift ${activeShift}`} Yield</span>
+              <span className="text-base font-black text-slate-850">{stats.success + stats.alerts ? Math.round((stats.success / (stats.success + stats.alerts)) * 100) : 0}%</span>
+            </div>
+            <div className="text-center px-4">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">All-Shifts Yield</span>
+              <span className="text-base font-black text-emerald-650">{allShiftsStats.successPercent}%</span>
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-full">
               <Clock size={13} className="text-blue-500 shrink-0" />
               <div>
-                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Shift {activeShift}</p>
-                <p className="text-[11px] font-black text-slate-700">{activeShift === '1' ? '06:00 – 14:00' : '14:00 – 22:00'}</p>
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{activeShift === 'overall' ? 'Overall' : `Shift ${activeShift}`}</p>
+                <p className="text-[11px] font-black text-slate-700">
+                  {activeShift === 'overall' ? 'All Shifts' : activeShift === '1' ? '06:00 – 14:00' : activeShift === '2' ? '14:00 – 22:00' : '22:00 – 06:00'}
+                </p>
               </div>
             </div>
             {timeLock?.enabled && (
@@ -469,7 +717,37 @@ const DeliveryPage = () => {
               </div>
               <button onClick={() => setViewDate(new Date(viewYear, viewMonth + 1, 1))}><ChevronRight size={16} /></button>
             </div>
-            <CircularTracker letter="D" daysData={dynamicDaysData} size={180} />
+            <CircularTracker 
+              letter="D" 
+              daysData={dynamicDaysData} 
+              size={180} 
+              onDayClick={(dayNum) => {
+                if (!canEdit) return;
+                const clickedDateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                
+                if (isSupervisor && clickedDateStr !== getISTDate()) {
+                  alert("Supervisors can only update today's date");
+                  return;
+                }
+                
+                const existing = dData.issueLogs?.find(log => log.rawDate === clickedDateStr);
+                if (existing) {
+                  setPlannedCount(existing.planned != null ? String(existing.planned) : '');
+                  setDispatchedCount(existing.dispatched != null ? String(existing.dispatched) : '');
+                  setBreakdowns(existing.breakdowns != null ? String(existing.breakdowns) : '');
+                  setPbrDelay(existing.pbrDelay != null ? String(existing.pbrDelay) : '');
+                  setQcDelay(existing.qcDelay != null ? String(existing.qcDelay) : '');
+                } else {
+                  setPlannedCount('');
+                  setDispatchedCount('');
+                  setBreakdowns('');
+                  setPbrDelay('');
+                  setQcDelay('');
+                }
+                setCustomDate(clickedDateStr);
+                setIsModalOpen(true);
+              }}
+            />
             <div className="grid grid-cols-3 gap-3 w-full mt-8">
               <StatBox val={stats.alerts} label="Failed" color="red" />
               <StatBox val={stats.success} label="Passed" color="emerald" />
@@ -495,7 +773,7 @@ const DeliveryPage = () => {
             <div className="px-4 md:px-8 py-3 bg-slate-50 grid grid-cols-4 text-[9px] font-black text-slate-400 uppercase border-b border-slate-100">
               <span>Timeline</span><span className="text-center">{deptLabels.targetLabel}</span><span className="text-center">{deptLabels.actualLabel}</span><span className="text-right">Action</span>
             </div>
-            <InfiniteScrollList data={allYearLogs} type="dispatch" setDeleteConfig={setDeleteConfig} deptLabels={deptLabels} />
+            <InfiniteScrollList data={allYearLogs} type="dispatch" setDeleteConfig={handleInterceptDelete} deptLabels={deptLabels} activeShift={activeShift} />
           </div>
 
           <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden min-h-[250px] max-h-[320px] flex flex-col">
@@ -503,7 +781,7 @@ const DeliveryPage = () => {
             <div className="px-4 md:px-8 py-3 bg-slate-50 grid grid-cols-5 text-[9px] font-black text-slate-400 uppercase border-b border-slate-100">
               <span>Date</span><span className="text-center">M/C</span><span className="text-center">{deptLabels.delay1Col}</span><span className="text-center">{deptLabels.delay2Col}</span><span className="text-right">Action</span>
             </div>
-            <InfiniteScrollList data={allYearLogs} type="minor" setDeleteConfig={setDeleteConfig} deptLabels={deptLabels} />
+            <InfiniteScrollList data={allYearLogs} type="minor" setDeleteConfig={handleInterceptDelete} deptLabels={deptLabels} activeShift={activeShift} />
           </div>
         </div>
 
@@ -554,21 +832,21 @@ const DeliveryPage = () => {
         </div>
 
         <div className="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mt-2">
-          <LogContainer title="Personnel Management" data={staffLogs} type="staff" onOpen={() => { if (!canEdit) return; setIsStaffModalOpen(true); }} setDeleteConfig={setDeleteConfig} colorTheme="emerald" />
-          <LogContainer title="Operational Activity Tracker" data={activityLogs} type="activity" onOpen={() => { if (!canEdit) return; setIsActivityModalOpen(true); }} setDeleteConfig={setDeleteConfig} colorTheme="blue" />
+          <LogContainer title="Issues & Compliance" data={staffLogs} type="staff" onOpen={() => { if (!canEdit) return; setIsStaffModalOpen(true); }} setDeleteConfig={handleInterceptDelete} colorTheme="emerald" onToggleResolve={handleToggleResolve} onShowDetails={handleShowLogDetails} />
+          <LogContainer title="Actions Delivery Logs" data={activityLogs} type="activity" onOpen={() => { if (!canEdit) return; setIsActivityModalOpen(true); }} setDeleteConfig={handleInterceptDelete} colorTheme="blue" onShowDetails={handleShowActionDetails} />
         </div>
       </main>
 
       {/* --- Modals --- */}
-      <EntryModal isOpen={isStaffModalOpen} onClose={() => setIsStaffModalOpen(false)} title="Personnel Terminal" type="staff" data={staffLogs} 
+      <EntryModal isOpen={isStaffModalOpen} onClose={() => setIsStaffModalOpen(false)} title="Issues & Compliance" type="staff" data={staffLogs} 
         onAdd={() => setStaffLogs([{id:"", name:"", action:"", time: getISTTime()}, ...staffLogs])}
         onEdit={(i, f, v) => setStaffLogs(prev => { let u = [...prev]; u[i][f] = v; return u; })}
-        setDeleteConfig={setDeleteConfig} onSubmit={() => handleLogSubmit('staff')} syncing={tableSyncing.staff} />
+        setDeleteConfig={handleInterceptDelete} onSubmit={() => handleLogSubmit('staff')} syncing={tableSyncing.staff} onToggleResolve={handleToggleResolve} onShowDetails={handleShowLogDetails} />
 
-      <EntryModal isOpen={isActivityModalOpen} onClose={() => setIsActivityModalOpen(false)} title="Activity Log" type="activity" data={activityLogs} 
+      <EntryModal isOpen={isActivityModalOpen} onClose={() => setIsActivityModalOpen(false)} title="Actions Delivery Logs" type="activity" data={activityLogs} 
         onAdd={() => setActivityLogs([{id:"", name:"", action:"", time: getISTTime()}, ...activityLogs])}
         onEdit={(i, f, v) => setActivityLogs(prev => { let u = [...prev]; u[i][f] = v; return u; })}
-        setDeleteConfig={setDeleteConfig} onSubmit={() => handleLogSubmit('activity')} syncing={tableSyncing.activity} />
+        setDeleteConfig={handleInterceptDelete} onSubmit={() => handleLogSubmit('activity')} syncing={tableSyncing.activity} onShowDetails={handleShowActionDetails} />
 
       {/* Floating All-Shifts CSV download button */}
       <button
@@ -581,9 +859,12 @@ const DeliveryPage = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-[420px] p-8 shadow-2xl">
-            <h2 className="font-black text-slate-800 uppercase text-center text-sm mb-2">Update Delivery Log</h2>
-            <p className="text-[9px] font-bold text-emerald-500 uppercase text-center mb-6 tracking-widest">{DEPT_FULL[activeDept]} · Shift {activeShift}</p>
+          <div className="bg-white rounded-[2.5rem] w-full max-w-[420px] p-8 shadow-2xl max-h-[90vh] overflow-y-auto relative">
+            <button onClick={() => { setIsModalOpen(false); setAssignedId(''); setAssignedName(''); }} className="absolute top-6 right-6 text-slate-350 hover:text-red-500 transition-colors">
+              <X size={20}/>
+            </button>
+            <h2 className="font-black text-slate-800 uppercase text-center text-sm mb-2 pr-6">Update Delivery Log</h2>
+            <p className="text-[9px] font-bold text-emerald-500 uppercase text-center mb-6 tracking-widest">{DEPT_FULL[activeDept]} · {activeShift === 'overall' ? 'Overall' : `Shift ${activeShift}`}</p>
             <div className="space-y-3">
               <input type="date" value={customDate}
                 onChange={e => setCustomDate(e.target.value)}
@@ -609,8 +890,35 @@ const DeliveryPage = () => {
                 <input type="number" placeholder={deptLabels.delay2Ph} value={qcDelay} onChange={e => setQcDelay(e.target.value)} className="w-full bg-slate-50 rounded-2xl p-4 font-bold text-[10px]" />
               </div>
 
+              {/* Commit and Close */}
+              {((Number(plannedCount || 0) > 0 || Number(dispatchedCount || 0) > 0) && ((Number(plannedCount || 0) > 0 ? (Number(dispatchedCount || 0) / Number(plannedCount || 0)) * 100 : 0) < 90 || Number(breakdowns || 0) > 0)) && (
+                <div className="space-y-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/60 mt-1 select-none">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Alert Details (Action Logs Entry)</span>
+                  <div>
+                    <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Reporter Name</label>
+                    <input type="text" value={reporterName} onChange={(e) => setReporterName(e.target.value)} placeholder="Enter Reporter Name" className="w-full bg-white border border-slate-250 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2 ring-emerald-500 font-semibold" />
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Reporter Employee ID</label>
+                    <input type="text" value={reporterId} onChange={(e) => setReporterId(e.target.value)} placeholder="Enter Reporter ID" className="w-full bg-white border border-slate-250 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2 ring-emerald-500 font-semibold" />
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Brief Description of Alert</label>
+                    <textarea value={alertBrief} onChange={(e) => setAlertBrief(e.target.value)} placeholder="What was the alert? Describe briefly" className="w-full bg-white border border-slate-250 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2 ring-emerald-500 font-semibold resize-none h-16" />
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Assigned Employee ID</label>
+                    <input type="text" value={assignedId} onChange={(e) => setAssignedId(e.target.value)} placeholder="Enter ID (e.g. EMP-101)" className="w-full bg-white border border-slate-250 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2 ring-emerald-500 font-semibold" />
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Assigned Employee Name</label>
+                    <input type="text" value={assignedName} onChange={(e) => setAssignedName(e.target.value)} placeholder="Enter Name (e.g. John Doe)" className="w-full bg-white border border-slate-250 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2 ring-emerald-500 font-semibold" />
+                  </div>
+                </div>
+              )}
+
               <button onClick={handleUpdateStatus} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black uppercase mt-2">Commit to Database</button>
-              <button onClick={() => setIsModalOpen(false)} className="w-full text-[10px] font-bold text-slate-400 uppercase">Close</button>
+              <button onClick={() => { setIsModalOpen(false); setAssignedId(''); setAssignedName(''); }} className="w-full text-[10px] font-bold text-slate-400 uppercase">Close</button>
             </div>
           </div>
         </div>
@@ -622,36 +930,98 @@ const DeliveryPage = () => {
 
 // --- Sub-Components ---
 
-const TableContent = ({ data, type, onEdit, readonly, setDeleteConfig }) => {
+const TableContent = ({ data, type, onEdit, readonly, setDeleteConfig, onToggleResolve, onShowDetails }) => {
   const isStaff = type === 'staff';
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <div className="overflow-x-auto flex-1 flex flex-col">
-        <div className="min-w-[360px] flex flex-col flex-1">
+        <div className="min-w-[420px] flex flex-col flex-1">
           {/* Header */}
-          <div className="px-3 sm:px-8 py-3 bg-slate-50 grid grid-cols-5 text-[9px] font-black text-slate-400 uppercase border-b border-slate-100 shrink-0">
-            <span className="truncate">ID</span>
-            <span className="truncate">Name</span>
-            <span className="col-span-2 truncate">Details</span>
-            <span className="text-right truncate">Del</span>
+          <div className={`px-3 sm:px-8 py-3 bg-slate-50 grid ${isStaff ? 'grid-cols-6' : 'grid-cols-5'} text-[9px] font-black text-slate-400 uppercase border-b border-slate-100 shrink-0 select-none`}>
+            <span>{isStaff ? 'Date' : 'Employee ID'}</span>
+            <span>{isStaff ? 'Assigned To' : 'Description'}</span>
+            <span className="col-span-2">{isStaff ? 'Action Status' : 'Details'}</span>
+            <span>Time</span>
+            {isStaff && <span className="text-center">Resolve</span>}
+            {!isStaff && <span className="text-right">Del</span>}
           </div>
           {/* Rows */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
-            {data.map((log, i) => (
-              <div key={i} className="grid grid-cols-5 py-3 items-center group px-3 sm:px-8">
-                <input disabled={readonly} className={`text-[10px] font-black bg-transparent outline-none truncate mr-1 min-w-0 ${isStaff ? 'text-emerald-600' : 'text-blue-600'}`} value={log.id} onChange={(e) => onEdit && onEdit(i, 'id', e.target.value)} />
-                <input disabled={readonly} className="text-[10px] font-bold text-slate-700 bg-transparent outline-none truncate mr-1 min-w-0" value={log.name} onChange={(e) => onEdit && onEdit(i, 'name', e.target.value)} />
-                <div className="col-span-2 flex items-center gap-1 min-w-0 overflow-hidden">
-                  <input disabled={readonly} className="text-[9px] font-bold text-slate-400 uppercase bg-transparent outline-none min-w-0 truncate flex-1" value={log.action} onChange={(e) => onEdit && onEdit(i, 'action', e.target.value)} />
-                  <span className="text-[9px] text-slate-300 shrink-0">{log.time}</span>
-                </div>
-                <div className="text-right shrink-0">
-                  {!readonly && (
-                    <button onClick={() => setDeleteConfig({ isOpen: true, type, index: i })} className="p-1.5 text-slate-300 hover:text-rose-500 rounded-lg transition-colors"><Trash2 size={13}/></button>
+            {data.map((log, i) => {
+              const isResolved = log.resolved === true;
+              const rowBgClass = isStaff 
+                ? (isResolved ? 'bg-emerald-50/50 border-l-4 border-emerald-500 hover:bg-emerald-100/50' : 'bg-red-50/55 border-l-4 border-red-400 hover:bg-red-100/50')
+                : 'hover:bg-slate-50/50';
+
+              const user = JSON.parse(localStorage.getItem('userInfo'));
+              const isSuperAdmin = user?.role === 'superadmin';
+
+              return (
+                <div 
+                  key={i} 
+                  onClick={(e) => {
+                    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON' && !e.target.closest('button')) {
+                      if (onShowDetails) onShowDetails(log);
+                    }
+                  }}
+                  className={`grid ${isStaff ? 'grid-cols-6' : 'grid-cols-5'} py-3 items-center group px-3 sm:px-8 cursor-pointer ${rowBgClass}`}
+                >
+                  <input 
+                    disabled={readonly} 
+                    className="text-[10px] font-bold text-slate-500 bg-transparent outline-none truncate mr-1 min-w-0" 
+                    value={isStaff ? (log.date || log.rawDate || '') : log.id} 
+                    onChange={(e) => onEdit && onEdit(i, isStaff ? 'date' : 'id', e.target.value)} 
+                  />
+                  <input 
+                    disabled={readonly} 
+                    className="text-[10px] font-bold text-slate-700 bg-transparent outline-none truncate mr-1 min-w-0" 
+                    value={isStaff ? (log.assignedName || log.name || '') : log.name} 
+                    onChange={(e) => onEdit && onEdit(i, isStaff ? 'assignedName' : 'name', e.target.value)} 
+                  />
+                  <div className="col-span-2 flex items-center gap-1 min-w-0 overflow-hidden">
+                    <input 
+                      disabled={readonly} 
+                      className="text-[9px] font-bold text-slate-400 uppercase bg-transparent outline-none min-w-0 truncate flex-1" 
+                      value={log.action} 
+                      onChange={(e) => onEdit && onEdit(i, 'action', e.target.value)} 
+                    />
+                  </div>
+                  <span className="text-[9px] text-slate-400 shrink-0 font-black">{log.time}</span>
+                  
+                  {isStaff && (
+                    <div className="flex items-center justify-center gap-1.5 select-none shrink-0">
+                      <button
+                        onClick={() => onToggleResolve && onToggleResolve(i, !isResolved)}
+                        className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 outline-none flex items-center ${isResolved ? 'bg-emerald-500 justify-end' : 'bg-red-500 justify-start'}`}
+                      >
+                        <div className="bg-white w-4 h-4 rounded-full shadow-md"></div>
+                      </button>
+                      {(isSuperAdmin || !readonly) && (
+                        <button 
+                          onClick={() => setDeleteConfig && setDeleteConfig({ isOpen: true, type, index: i })} 
+                          className="p-1 text-slate-355 hover:text-rose-500 rounded transition-all hover:bg-rose-50"
+                        >
+                          <Trash2 size={13}/>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {!isStaff && (
+                    <div className="text-right shrink-0">
+                      {(isSuperAdmin || !readonly) && (
+                        <button 
+                          onClick={() => setDeleteConfig && setDeleteConfig({ isOpen: true, type, index: i })} 
+                          className="p-1 text-slate-355 hover:text-rose-500 rounded transition-all hover:bg-rose-50"
+                        >
+                          <Trash2 size={13}/>
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -673,7 +1043,7 @@ const minorFmt = (value, unit) => {
   return `${n}`;
 };
 
-const InfiniteScrollList = ({ data, type, setDeleteConfig, deptLabels }) => (
+const InfiniteScrollList = ({ data, type, setDeleteConfig, deptLabels, activeShift }) => (
   <div className="flex-1 overflow-y-auto no-scrollbar px-4 md:px-8">
     {data.map(({ monthName, logs }) => logs.length > 0 && (
       <div key={monthName} className="mb-6">
@@ -683,7 +1053,14 @@ const InfiniteScrollList = ({ data, type, setDeleteConfig, deptLabels }) => (
           const dispatchOk = efficiency >= 90;
           return (
             <div key={i} className={`grid ${type === 'dispatch' ? 'grid-cols-4' : 'grid-cols-5'} py-4 text-[11px] border-b border-slate-50 items-center group`}>
-              <span className="font-bold text-slate-400">{log.date.split('/')[0]}/{log.date.split('/')[1]}</span>
+              <div className="flex flex-col">
+                <span className="font-bold text-slate-400">{log.date.split('/')[0]}/{log.date.split('/')[1]}</span>
+                {activeShift === 'overall' && log.shift && (
+                  <span className="text-[8px] bg-slate-100 text-slate-700 px-1 py-0.5 rounded w-max mt-0.5 font-bold leading-none">
+                    S{log.shift}
+                  </span>
+                )}
+              </div>
               {type === 'dispatch' ? (
                 <>
                   <span className="text-center text-slate-400 font-bold">{log.planned}</span>
@@ -718,20 +1095,19 @@ const InfiniteScrollList = ({ data, type, setDeleteConfig, deptLabels }) => (
   </div>
 );
 
-const LogContainer = ({ title, data, type, onOpen, colorTheme, setDeleteConfig }) => {
+const LogContainer = ({ title, data, type, onOpen, colorTheme, setDeleteConfig, onToggleResolve, onShowDetails }) => {
   const theme = THEME_STYLES[colorTheme];
   return (
     <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[350px]">
       <div className={`px-8 py-5 flex justify-between items-center border-b border-slate-50 ${theme.light}`}>
         <h3 className={`font-black text-[11px] uppercase ${theme.text}`}>{title}</h3>
-        <button onClick={onOpen} className={`${theme.bg} text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase shadow-md transition-all active:scale-95`}>Update</button>
       </div>
-      <TableContent data={data.slice(0, 5)} type={type} readonly setDeleteConfig={setDeleteConfig} />
+      <TableContent data={data.slice(0, 5)} type={type} readonly setDeleteConfig={setDeleteConfig} onToggleResolve={onToggleResolve} onShowDetails={onShowDetails} />
     </div>
   );
 };
 
-const EntryModal = ({ isOpen, onClose, title, type, data, onAdd, onEdit, onSubmit, syncing, setDeleteConfig }) => {
+const EntryModal = ({ isOpen, onClose, title, type, data, onAdd, onEdit, onSubmit, syncing, setDeleteConfig, onToggleResolve, onShowDetails }) => {
   if (!isOpen) return null;
   const theme = THEME_STYLES[type === 'staff' ? 'emerald' : 'blue'];
   return (
@@ -742,7 +1118,7 @@ const EntryModal = ({ isOpen, onClose, title, type, data, onAdd, onEdit, onSubmi
           <button onClick={onAdd} className={`${theme.bg} text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg transition-all active:scale-95`}>+ New Entry</button>
         </div>
         <div className="flex-1 overflow-y-auto">
-          <TableContent data={data} type={type} onEdit={onEdit} setDeleteConfig={setDeleteConfig} />
+          <TableContent data={data} type={type} onEdit={onEdit} setDeleteConfig={setDeleteConfig} onToggleResolve={onToggleResolve} onShowDetails={onShowDetails} />
         </div>
         <div className="p-8 border-t flex items-center gap-6">
           <button onClick={onClose} className="font-black text-slate-400 text-[10px] uppercase">Discard</button>

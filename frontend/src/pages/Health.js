@@ -30,7 +30,7 @@ const Health = () => {
   const isSupervisor = user.role === 'supervisor';
   const userDepts    = (user.department || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   const isAssignedDept = isSuperAdmin || userDepts.includes((dept || '').toLowerCase());
-  const canUpdate    = (isSupervisor && isAssignedDept) || isSuperAdmin;
+  const canUpdate    = ((isSupervisor && isAssignedDept) || isSuperAdmin) && shift !== 'overall';
   const reportRef    = useRef(null);
 
   const [currentMonthIndex, setCurrentMonthIndex] = useState(new Date().getMonth());
@@ -72,18 +72,73 @@ const Health = () => {
   useEffect(() => {
     const fetchMonthData = async () => {
       try {
-        const { data } = await axios.get(`${API}/api/health`, {
-          params: { month: currentMonthName, year: currentYear, dept: dept || 'fg', shift: shift || '1' },
-        });
-        if (data?.days?.length > 0) {
-          setAllMonthsData(prev => ({ ...prev, [currentMonthName]: data.days }));
+        if (shift === 'overall') {
+          const [h1, h2, h3] = await Promise.all([
+            axios.get(`${API}/api/health`, { params: { month: currentMonthName, year: currentYear, dept: dept || 'fg', shift: '1' } }),
+            axios.get(`${API}/api/health`, { params: { month: currentMonthName, year: currentYear, dept: dept || 'fg', shift: '2' } }),
+            axios.get(`${API}/api/health`, { params: { month: currentMonthName, year: currentYear, dept: dept || 'fg', shift: '3' } }),
+          ]);
+          
+          const days1 = h1.data?.days || [];
+          const days2 = h2.data?.days || [];
+          const days3 = h3.data?.days || [];
+          
+          const combinedDays = Array.from({ length: 31 }, (_, i) => {
+            const dateNum = i + 1;
+            const d1 = days1.find(d => Number(d.date) === dateNum);
+            const d2 = days2.find(d => Number(d.date) === dateNum);
+            const d3 = days3.find(d => Number(d.date) === dateNum);
+            
+            let totalStrength = 0;
+            let absent = 0;
+            let statuses = [];
+            let keypoints = [];
+            
+            [d1, d2, d3].forEach(d => {
+              if (d && d.status) {
+                statuses.push(d.status);
+                if (d.keypoints) keypoints.push(d.keypoints);
+                if (d.totalStrength != null) {
+                  totalStrength += Number(d.totalStrength);
+                  const att = d.attendees != null ? Number(d.attendees) : Number(d.totalStrength);
+                  absent += (Number(d.totalStrength) - att);
+                }
+              }
+            });
+            
+            let combinedStatus = null;
+            if (statuses.includes('no-meeting')) {
+              combinedStatus = 'no-meeting';
+            } else if (statuses.includes('meeting')) {
+              combinedStatus = 'meeting';
+            } else if (statuses.includes('holiday')) {
+              combinedStatus = 'holiday';
+            }
+            
+            return {
+              date: dateNum,
+              status: combinedStatus,
+              keypoints: keypoints.join(' | '),
+              attendees: totalStrength - absent,
+              totalStrength: totalStrength,
+            };
+          });
+          
+          setAllMonthsData(prev => ({ ...prev, [currentMonthName]: combinedDays }));
         } else {
-          setAllMonthsData(prev => ({
-            ...prev,
-            [currentMonthName]: Array.from({ length: 31 }, (_, i) => ({
-              date: i + 1, status: null, keypoints: '', attendance: '', attendees: null, totalStrength: null,
-            })),
-          }));
+          const { data } = await axios.get(`${API}/api/health`, {
+            params: { month: currentMonthName, year: currentYear, dept: dept || 'fg', shift: shift || '1' },
+          });
+          if (data?.days?.length > 0) {
+            setAllMonthsData(prev => ({ ...prev, [currentMonthName]: data.days }));
+          } else {
+            setAllMonthsData(prev => ({
+              ...prev,
+              [currentMonthName]: Array.from({ length: 31 }, (_, i) => ({
+                date: i + 1, status: null, keypoints: '', attendance: '', attendees: null, totalStrength: null,
+              })),
+            }));
+          }
         }
       } catch {
         setAllMonthsData(prev => ({
@@ -99,23 +154,46 @@ const Health = () => {
 
   // Fetch time lock for this dept+shift
   useEffect(() => {
-    fetch(`${API}/api/timelock/${dept || 'fg'}/${shift || '1'}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => setTimeLock(d))
-      .catch(() => {});
+    if (shift !== 'overall') {
+      fetch(`${API}/api/timelock/${dept || 'fg'}/${shift || '1'}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => setTimeLock(d))
+        .catch(() => {});
+    } else {
+      setTimeLock(null);
+    }
   }, [dept, shift]);
 
   // Fetch metrics data for logs (H pillar)
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
-        const url = `${API}/api/metrics?shift=${shift || '1'}&dept=${dept || 'fg'}`;
-        const response = await fetch(url);
-        const dbData = await response.json();
-        if (dbData?.length > 0) {
-          const hLive = dbData.find(d => d.letter === 'H');
-          setStaffLogs(hLive?.staffLogs || []);
-          setActivityLogs(hLive?.activityLogs || []);
+        if (shift === 'overall') {
+          const response = await fetch(`${API}/api/metrics?dept=${dept || 'fg'}`);
+          const dbData = await response.json();
+          if (dbData?.length > 0) {
+            const hLive = dbData.find(d => d.letter === 'H');
+            if (hLive) {
+              const allStaffLogs = [];
+              const allActivityLogs = [];
+              ['1', '2', '3'].forEach(s => {
+                const sData = hLive.shifts?.[s] || {};
+                if (Array.isArray(sData.staffLogs)) allStaffLogs.push(...sData.staffLogs);
+                if (Array.isArray(sData.activityLogs)) allActivityLogs.push(...sData.activityLogs);
+              });
+              setStaffLogs(allStaffLogs);
+              setActivityLogs(allActivityLogs);
+            }
+          }
+        } else {
+          const url = `${API}/api/metrics?shift=${shift || '1'}&dept=${dept || 'fg'}`;
+          const response = await fetch(url);
+          const dbData = await response.json();
+          if (dbData?.length > 0) {
+            const hLive = dbData.find(d => d.letter === 'H');
+            setStaffLogs(hLive?.staffLogs || []);
+            setActivityLogs(hLive?.activityLogs || []);
+          }
         }
       } catch (error) { console.error(error); }
     };
@@ -363,7 +441,7 @@ const Health = () => {
       <div className="px-4 sm:px-6 mb-4 mt-1">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Health — Shift {shift}</h1>
+            <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Health — {shift === 'overall' ? 'Overall' : `Shift ${shift}`}</h1>
             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{DEPT_FULL[dept] || dept?.toUpperCase()}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -371,8 +449,10 @@ const Health = () => {
             <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-full">
               <Clock size={13} className="text-blue-500 shrink-0"/>
               <div>
-                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Shift {shift}</p>
-                <p className="text-[11px] font-black text-slate-700">{shift === '1' ? '06:00 – 14:00' : '14:00 – 22:00'}</p>
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{shift === 'overall' ? 'Overall' : `Shift ${shift}`}</p>
+                <p className="text-[11px] font-black text-slate-700">
+                  {shift === 'overall' ? 'All Shifts' : shift === '1' ? '06:00 – 14:00' : shift === '2' ? '14:00 – 22:00' : '22:00 – 06:00'}
+                </p>
               </div>
             </div>
             {/* Month navigation */}
@@ -594,7 +674,7 @@ const TableContent = ({ data, type, onEdit, readonly, setDeleteConfig }) => {
       <div className="overflow-x-auto flex-1 flex flex-col">
         <div className="min-w-[360px] flex flex-col flex-1">
           <div className="px-3 sm:px-8 py-3 bg-slate-50 grid grid-cols-5 text-[9px] font-black text-slate-400 uppercase border-b border-slate-100 shrink-0">
-            <span className="truncate">ID</span><span className="truncate">Name</span><span className="col-span-2 truncate">Details</span><span className="text-right truncate">Del</span>
+            <span className="truncate">{isStaff ? 'ID' : 'Employee ID'}</span><span className="truncate">{isStaff ? 'Name' : 'Description'}</span><span className="col-span-2 truncate">Details</span><span className="text-right truncate">Del</span>
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
             {data.length === 0 ? (
@@ -629,7 +709,6 @@ const LogContainer = ({ title, data, type, onOpen, colorTheme, setDeleteConfig }
     <div className="bg-white rounded-[2.5rem] shadow-md border-2 border-slate-200 overflow-hidden flex flex-col min-h-[400px]">
       <div className={`px-8 py-5 flex justify-between items-center border-b-2 border-slate-100 ${theme.light}`}>
         <h3 className={`font-black text-[11px] uppercase ${theme.text}`}>{title}</h3>
-        <button onClick={onOpen} className={`${theme.bg} text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase shadow-md transition-all active:scale-95 hover:shadow-lg hover:scale-105 duration-200`}>Update</button>
       </div>
       <div className="flex-1 overflow-hidden flex flex-col">
         <TableContent data={data.slice(0, 8)} type={type} readonly setDeleteConfig={setDeleteConfig} />

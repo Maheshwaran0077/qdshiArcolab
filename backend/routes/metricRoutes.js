@@ -29,13 +29,19 @@ const getLabel = (letter, dept) => {
   return `${deptName} ${typeLabel}`;
 };
 
-const getShiftCounts = (metric, shift) => {
+const getShiftCounts = (metric, shift, month = null) => {
   const shiftData = metric.shifts?.[shift] || {};
   const logs = Array.isArray(shiftData.issueLogs) ? shiftData.issueLogs : [];
   let totalAlerts = 0;
   let totalSuccess = 0;
 
+  // Filter logs for this month if specified (month format is "YYYY-MM")
+  const filteredLogs = month
+    ? logs.filter(l => l.date && l.date.startsWith(month))
+    : logs;
+
   if (!logs.length) {
+    if (month) return { totalAlerts: 0, totalSuccess: 0 };
     totalAlerts += shiftData.alerts ?? 0;
     totalSuccess += shiftData.success ?? 0;
     return { totalAlerts, totalSuccess };
@@ -48,13 +54,13 @@ const getShiftCounts = (metric, shift) => {
 
   switch (metric.letter) {
     case 'Q':
-      logs.forEach((l) => count(l.reason === 'Target Met'));
+      filteredLogs.forEach((l) => count(l.reason === 'Target Met'));
       break;
     case 'S':
-      logs.forEach((l) => count((Number(l.numSafetyIncidents) || 0) === 0));
+      filteredLogs.forEach((l) => count((Number(l.numSafetyIncidents) || 0) === 0));
       break;
     case 'D':
-      logs.forEach((l) => {
+      filteredLogs.forEach((l) => {
         const planned = Number(l.planned) || 0;
         const dispatched = Number(l.dispatched) || 0;
         const breakdowns = Number(l.breakdowns) || 0;
@@ -63,8 +69,10 @@ const getShiftCounts = (metric, shift) => {
       });
       break;
     default:
-      totalAlerts += shiftData.alerts ?? 0;
-      totalSuccess += shiftData.success ?? 0;
+      if (!month) {
+        totalAlerts += shiftData.alerts ?? 0;
+        totalSuccess += shiftData.success ?? 0;
+      }
   }
 
   return { totalAlerts, totalSuccess };
@@ -97,10 +105,18 @@ router.get('/', async (req, res) => {
 // GET global pillar totals for operational dashboard
 router.get('/global-pillars', async (req, res) => {
   try {
+    const { month } = req.query; // Expects "YYYY-MM"
     const letters = ['Q', 'D', 'S', 'H'];
     const pillars = letters.reduce((acc, letter) => ({
       ...acc,
-      [letter.toLowerCase()]: { totalAlerts: 0, totalSuccess: 0, alertPercent: 0, successPercent: 100 },
+      [letter.toLowerCase()]: { 
+        totalAlerts: 0, 
+        totalSuccess: 0, 
+        alertPercent: 0, 
+        successPercent: 0,
+        alertsList: [],
+        successList: []
+      },
     }), {});
 
     const metrics = await Metric.find({ letter: { $in: letters } });
@@ -108,34 +124,97 @@ router.get('/global-pillars', async (req, res) => {
       const key = metric.letter.toLowerCase();
       if (!pillars[key]) return;
       ['1', '2', '3'].forEach(shift => {
-        const counts = getShiftCounts(metric, shift);
+        const counts = getShiftCounts(metric, shift, month);
         pillars[key].totalAlerts += counts.totalAlerts;
         pillars[key].totalSuccess += counts.totalSuccess;
+
+        // Collect logs lists for Q, D, S
+        if (['q', 'd', 's'].includes(key)) {
+          const shiftData = metric.shifts?.[shift] || {};
+          const logs = Array.isArray(shiftData.issueLogs) ? shiftData.issueLogs : [];
+          const deptName = DEPT_CONFIG[metric.dept] || metric.dept.toUpperCase();
+
+          const filteredLogs = month
+            ? logs.filter(l => l.date && l.date.startsWith(month))
+            : logs;
+
+          filteredLogs.forEach(l => {
+            const logDate = l.date || 'N/A';
+            if (metric.letter === 'Q') {
+              const isSuccess = l.reason === 'Target Met';
+              if (isSuccess) {
+                pillars[key].successList.push({ dept: deptName, shift, date: logDate, detail: 'Target Met' });
+              } else {
+                pillars[key].alertsList.push({ dept: deptName, shift, date: logDate, detail: l.reason || 'N/A' });
+              }
+            } else if (metric.letter === 'S') {
+              const safetyIncidents = Number(l.numSafetyIncidents) || 0;
+              if (safetyIncidents === 0) {
+                pillars[key].successList.push({ dept: deptName, shift, date: logDate, detail: 'No safety incidents recorded' });
+              } else {
+                const detail = `Incidents: ${safetyIncidents}, Near Misses: ${Number(l.numNearMiss) || 0}, Unsafe Acts: ${Number(l.numUnsafeActs) || 0}. Details: ${l.incident || 'None'}`;
+                pillars[key].alertsList.push({ dept: deptName, shift, date: logDate, detail });
+              }
+            } else if (metric.letter === 'D') {
+              const planned = Number(l.planned) || 0;
+              const dispatched = Number(l.dispatched) || 0;
+              const breakdowns = Number(l.breakdowns) || 0;
+              const efficiency = planned ? (dispatched / planned) * 100 : 0;
+              const isSuccess = efficiency >= 90 && breakdowns === 0;
+              
+              if (isSuccess) {
+                const detail = `Planned: ${planned}, Dispatched: ${dispatched} (${efficiency.toFixed(1)}% Efficiency)`;
+                pillars[key].successList.push({ dept: deptName, shift, date: logDate, detail });
+              } else {
+                const detail = `Planned: ${planned}, Dispatched: ${dispatched} (${efficiency.toFixed(1)}% Efficiency). Breakdowns: ${breakdowns} mins. Reason: ${l.reason || 'N/A'}`;
+                pillars[key].alertsList.push({ dept: deptName, shift, date: logDate, detail });
+              }
+            }
+          });
+        }
       });
     });
 
     // Health pillar should be derived from Health documents (meeting vs no-meeting)
     try {
-      const healthDocs = await Health.find({});
+      const query = {};
+      if (month) {
+        const [yStr, mStr] = month.split('-');
+        const yearNum = Number(yStr);
+        const dateObj = new Date(yearNum, Number(mStr) - 1, 1);
+        const monthLong = dateObj.toLocaleString('default', { month: 'long' });
+        
+        query.year = yearNum;
+        query.month = monthLong;
+      }
+      
+      const healthDocs = await Health.find(query);
       let hAlerts = 0;
       let hSuccess = 0;
       healthDocs.forEach(doc => {
+        const deptName = DEPT_CONFIG[doc.dept] || doc.dept.toUpperCase();
         (doc.days || []).forEach(day => {
-          if (String(day.status) === 'meeting') hSuccess += 1;
-          else if (String(day.status) === 'no-meeting') hAlerts += 1;
+          const dateStr = `${doc.year}-${doc.month} Day ${day.date}`;
+          if (String(day.status) === 'meeting') {
+            hSuccess += 1;
+            const detail = `Health Meeting held. Attendance: ${day.attendance || 'N/A'}, Attendees: ${day.attendees || 0}/${day.totalStrength || 0}`;
+            pillars.h.successList.push({ dept: deptName, shift: doc.shift, date: dateStr, detail });
+          } else if (String(day.status) === 'no-meeting') {
+            hAlerts += 1;
+            const detail = `Missed Health Meeting. Remarks: ${day.remarks || 'None'}`;
+            pillars.h.alertsList.push({ dept: deptName, shift: doc.shift, date: dateStr, detail });
+          }
         });
       });
-      // override any metric-derived health counts with actual health doc counts
       pillars.h.totalAlerts = hAlerts;
       pillars.h.totalSuccess = hSuccess;
     } catch (err) {
-      // ignore health aggregation failures and keep metric-derived values
       console.error('Health aggregation error:', err.message);
     }
  
     Object.values(pillars).forEach(pillar => {
       const total = pillar.totalAlerts + pillar.totalSuccess;
-      pillar.successPercent = total ? Math.round((pillar.totalSuccess / total) * 100) : 100;
+      pillar.successPercent = total ? Math.round((pillar.totalSuccess / total) * 100) : 0;
       pillar.alertPercent = total ? Math.round((pillar.totalAlerts / total) * 100) : 0;
     });
 

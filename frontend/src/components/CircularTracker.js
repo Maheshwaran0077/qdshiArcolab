@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 
 // size defaults to 220 — all geometry scales proportionally from that baseline.
-const CircularTracker = ({ letter, daysData, size = 220 }) => {
+const CircularTracker = ({ letter, daysData, size = 220, onDayClick }) => {
   const center      = size / 2;
   const radius      = Math.round(size * 0.386);   // 85 / 220
   const strokeWidth = Math.round(size * 0.10);    // 22 / 220
@@ -45,6 +45,7 @@ const CircularTracker = ({ letter, daysData, size = 220 }) => {
               key={`${i}-${totalDays}`}
               whileHover={{ scale: 1.1, filter: 'brightness(1.1)' }}
               transition={{ type: 'spring', stiffness: 300 }}
+              onClick={() => onDayClick && onDayClick(i + 1)}
               className="cursor-pointer"
             >
               <path

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Download } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Navbar from './components/Navbar';
 import CircularTracker from './components/CircularTracker';
@@ -37,18 +38,19 @@ const DEPT_BG = {
   orange: 'from-orange-500 to-orange-700 shadow-orange-200',     // HR
 };
 
-const VALID_DEPTS = DEPARTMENTS.map(d => d.key);
+const VALID_DEPTS = DEPARTMENTS.map(d => d.key); 
 const VALID_MODULES = ['q', 'd', 's', 'h'];
-
+  
 // ─────────────────────────────────────────────    
 // COMPONENT: CORE QDSH RING CONTAINER (LIVE DATA)
 // ─────────────────────────────────────────────
-const AgginementRingCard = ({ mod, onSelect, liveMetrics, loading }) => {
+const AgginementRingCard = ({ mod, onSelect, liveMetrics, loading, onViewDetails }) => {
   // Defensive fallbacks to gracefully handle 0 entries or loading cycles smoothly
   const alertPercent = liveMetrics ? Number(liveMetrics.alertPercent ?? 0) : 0;
-  const successPercent = liveMetrics ? Number(liveMetrics.successPercent ?? 100) : 100;
+  const successPercent = liveMetrics ? Number(liveMetrics.successPercent ?? 0) : 0;
   const totalAlerts = liveMetrics ? Number(liveMetrics.totalAlerts ?? 0) : 0;
   const totalSuccess = liveMetrics ? Number(liveMetrics.totalSuccess ?? 0) : 0;
+  const total = totalSuccess + totalAlerts;
 
   // Circular math for structural SVG ring representation
   const radius = 38;
@@ -64,7 +66,7 @@ const AgginementRingCard = ({ mod, onSelect, liveMetrics, loading }) => {
       className="cursor-pointer bg-white border border-slate-100 rounded-[2.5rem] p-6 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col items-center justify-between h-auto gap-4"
     >
       <div className="text-center w-full">
-        <h3 className={`text-base font-black uppercase tracking-wider ${mod.text}`}>
+        <h3 className={`text-base font-black uppercase tracking-wider ${total === 0 ? 'text-slate-400' : mod.text}`}>
           {mod.label} Overview
         </h3>
         <p className="text-[10px] font-bold text-slate-400 uppercase">Operational Pillar</p>
@@ -78,9 +80,15 @@ const AgginementRingCard = ({ mod, onSelect, liveMetrics, loading }) => {
           </div>
         ) : (
           <div className="absolute text-center z-10">
-            <span className={`text-4xl font-black ${mod.text}`}>{mod.letter}</span>
+            <span className={`text-4xl font-black ${total === 0 ? 'text-slate-400' : mod.text}`}>{mod.letter}</span>
             <div className="text-[10px] font-black text-slate-700 tracking-tighter mt-1 bg-white px-2 py-0.5 rounded-full shadow-sm border border-slate-100">
-              <span className="text-emerald-500">{successPercent}%</span> / <span className="text-orange-500">{alertPercent}%</span>
+              {total === 0 ? (
+                <span className="text-slate-400">Empty</span>
+              ) : (
+                <>
+                  <span className="text-emerald-500">{successPercent}%</span> / <span className="text-orange-500">{alertPercent}%</span>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -94,7 +102,7 @@ const AgginementRingCard = ({ mod, onSelect, liveMetrics, loading }) => {
             strokeWidth="10"
             fill="transparent"
           />
-          {!loading && (
+          {!loading && total > 0 && (
             <>
               {/* Success Ring */}
               <circle
@@ -128,15 +136,31 @@ const AgginementRingCard = ({ mod, onSelect, liveMetrics, loading }) => {
 
       {/* REAL-TIME COUNTS SUMMARY VIEW */}
       <div className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-3 grid grid-cols-2 gap-2 text-center">
-        <div className="border-r border-slate-200/60">
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            if (totalSuccess > 0) {
+              onViewDetails(`${mod.label} - Success Logs`, 'success', liveMetrics?.successList || [], 'emerald');
+            }
+          }}
+          className={`border-r border-slate-200/60 p-1 transition-colors rounded-l-xl ${totalSuccess > 0 ? 'hover:bg-slate-100 cursor-pointer' : ''}`}
+        >
           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Success Logs</p>
-          <p className="text-base font-black text-emerald-600 mt-0.5">
+          <p className={`text-base font-black mt-0.5 ${totalSuccess === 0 ? 'text-slate-400' : 'text-emerald-600'}`}>
             {loading ? '...' : totalSuccess}
           </p>
         </div>
-        <div>
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            if (totalAlerts > 0) {
+              onViewDetails(`${mod.label} - Alert Flags`, 'alert', liveMetrics?.alertsList || [], 'orange');
+            }
+          }}
+          className={`p-1 transition-colors rounded-r-xl ${totalAlerts > 0 ? 'hover:bg-slate-100 cursor-pointer' : ''}`}
+        >
           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Alert Flags</p>
-          <p className="text-base font-black text-orange-600 mt-0.5">
+          <p className={`text-base font-black mt-0.5 ${totalAlerts === 0 ? 'text-slate-400' : 'text-orange-600'}`}>
             {loading ? '...' : totalAlerts}
           </p>
         </div>
@@ -156,44 +180,114 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState('overall'); // 'overall' or 'YYYY-MM'
+  const [showMonthDropdown, setShowMonthDropdown] = useState(false);
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalType, setModalType] = useState('success');
+  const [modalData, setModalData] = useState([]);
+  const [modalColor, setModalColor] = useState('emerald');
+
+  const handleOpenModal = (title, type, data, color) => {
+    setModalTitle(title);
+    setModalType(type);
+    setModalData(data);
+    setModalColor(color);
+    setModalOpen(true);
+  };
+
+  const currentYear = new Date().getFullYear();
+  const months = [
+    { label: 'Jan', value: `${currentYear}-01` },
+    { label: 'Feb', value: `${currentYear}-02` },
+    { label: 'Mar', value: `${currentYear}-03` },
+    { label: 'Apr', value: `${currentYear}-04` },
+    { label: 'May', value: `${currentYear}-05` },
+    { label: 'Jun', value: `${currentYear}-06` },
+    { label: 'Jul', value: `${currentYear}-07` },
+    { label: 'Aug', value: `${currentYear}-08` },
+    { label: 'Sep', value: `${currentYear}-09` },
+    { label: 'Oct', value: `${currentYear}-10` },
+    { label: 'Nov', value: `${currentYear}-11` },
+    { label: 'Dec', value: `${currentYear}-12` }
+  ];
+
+  const getSelectedMonthLabel = () => {
+    if (selectedMonth === 'overall') return 'Overall (12m)';
+    const [, mVal] = selectedMonth.split('-');
+    const mNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${mNames[parseInt(mVal) - 1]} ${currentYear}`;
+  };
 
   useEffect(() => {
+    let active = true;
     const fetchLivePillarMetrics = async () => {
       try {
-        // Only set back to loading if it's the very first time running to avoid dashboard flashes during intervals
-        if (!metrics) setLoading(true);
+        const url = selectedMonth === 'overall'
+          ? `${API}/api/metrics/global-pillars`
+          : `${API}/api/metrics/global-pillars?month=${selectedMonth}`;
 
-        const response = await fetch(`${API}/api/metrics/global-pillars`);
+        const response = await fetch(url);
 
         if (!response.ok) {
           throw new Error(`HTTP network error status: ${response.status}`);
         }
 
         const data = await response.json();
-        setMetrics(data);
+        if (active) {
+          setMetrics(data);
+        }
       } catch (error) {
         console.error("Database connection failed, displaying calculation defaults:", error);
-        setMetrics({
-          q: { alertPercent: 50, successPercent: 50, totalAlerts: 14, totalSuccess: 14 },
-          d: { alertPercent: 30, successPercent: 70, totalAlerts: 9, totalSuccess: 21 },
-          s: { alertPercent: 20, successPercent: 80, totalAlerts: 6, totalSuccess: 24 },
-          h: { alertPercent: 10, successPercent: 90, totalAlerts: 3, totalSuccess: 27 },
-        });
+        if (active) {
+          setMetrics({
+            q: { alertPercent: 50, successPercent: 50, totalAlerts: 14, totalSuccess: 14 },
+            d: { alertPercent: 30, successPercent: 70, totalAlerts: 9, totalSuccess: 21 },
+            s: { alertPercent: 20, successPercent: 80, totalAlerts: 6, totalSuccess: 24 },
+            h: { alertPercent: 10, successPercent: 90, totalAlerts: 3, totalSuccess: 27 },
+          });
+        }
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     };
 
+    setLoading(true);
     fetchLivePillarMetrics();
     const interval = setInterval(fetchLivePillarMetrics, 10000); // Polling every 10s to reflect dynamic structural shifts
-    return () => clearInterval(interval);
-  }, [metrics]);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [selectedMonth]);
+
+  // Calculate overall metrics
+  let totalAlerts = 0;
+  let totalSuccess = 0;
+  if (metrics) {
+    Object.keys(metrics).forEach(key => {
+      const m = metrics[key];
+      totalAlerts += Number(m?.totalAlerts ?? 0);
+      totalSuccess += Number(m?.totalSuccess ?? 0);
+    });
+  }
+  const grandTotal = totalSuccess + totalAlerts;
+  const overallSuccessPercent = grandTotal ? Math.round((totalSuccess / grandTotal) * 100) : 0;
+  const overallAlertPercent = grandTotal ? Math.round((totalAlerts / grandTotal) * 100) : 0;
+
+  const overallRadius = 30;
+  const overallCircumference = 2 * Math.PI * overallRadius;
+  const overallSuccessOffset = overallCircumference * (1 - overallSuccessPercent / 100);
+  const overallAlertOffset = overallCircumference * (1 - overallAlertPercent / 100);
 
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 lg:py-10">
       {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-6">
-        <div>
+      <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-6">
+        <div className="flex-1">
           <h1 className="text-2xl lg:text-4xl font-black text-slate-800 uppercase tracking-tighter">
             Operational Management Hub
           </h1>
@@ -201,6 +295,160 @@ const Dashboard = () => {
             Global Enterprise Health Monitoring Indicators (Live Database Synced)
           </p>
         </div>
+
+        {/* Overall Yield Circular Diagram with Month Selection Dropdown */}
+        <motion.div 
+          whileHover={{ scale: 1.01 }}
+          className={`flex flex-col bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm relative w-60 gap-2.5 ${showMonthDropdown ? 'z-50' : 'z-10'}`}
+        >
+          {/* Top part: Left (Circle) + Right (Counts) */}
+          <div className="flex items-center gap-3.5 w-full">
+            {/* Left: Overall Yield Circle */}
+            <div className="relative w-14 h-14 flex items-center justify-center bg-slate-50 rounded-full shadow-inner border border-slate-100 flex-shrink-0">
+              {loading ? (
+                <div className="text-[10px] text-slate-400 font-bold uppercase animate-pulse">...</div>
+              ) : (
+                <span className={`text-sm font-black tracking-tighter ${grandTotal === 0 ? 'text-slate-400' : 'text-slate-800'}`}>
+                  {grandTotal === 0 ? '0%' : `${overallSuccessPercent}%`}
+                </span>
+              )}
+              <svg className="w-full h-full transform -rotate-90 absolute top-0 left-0" viewBox="0 0 80 80">
+                <circle
+                  cx="40"
+                  cy="40"
+                  r={overallRadius}
+                  stroke="#F1F5F9"
+                  strokeWidth="7"
+                  fill="transparent"
+                />
+                {!loading && grandTotal > 0 && (
+                  <>
+                    {/* Success Ring */}
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r={overallRadius}
+                      stroke="#10B981"
+                      strokeWidth="7"
+                      fill="transparent"
+                      strokeDasharray={overallCircumference}
+                      strokeDashoffset={overallSuccessOffset}
+                      strokeLinecap="round"
+                    />
+                    {/* Alert Ring */}
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r={overallRadius}
+                      stroke="#F97316"
+                      strokeWidth="7"
+                      fill="transparent"
+                      strokeDasharray={overallCircumference}
+                      strokeDashoffset={overallAlertOffset}
+                      strokeLinecap="round"
+                      className="origin-center rotate-180"
+                    />
+                  </>
+                )}
+              </svg>
+            </div>
+
+            {/* Right: Stats and Title */}
+            <div className="flex-1 flex flex-col justify-center">
+              <h3 className="text-slate-400 font-black text-[8px] uppercase tracking-[0.2em] mb-0.5">Overall Yield</h3>
+              <div className="flex flex-col gap-0.5">
+                <div 
+                  onClick={() => {
+                    if (totalSuccess > 0) {
+                      const allSuccess = [];
+                      if (metrics) {
+                        Object.keys(metrics).forEach(key => {
+                          if (metrics[key]?.successList) {
+                            allSuccess.push(...metrics[key].successList);
+                          }
+                        });
+                      }
+                      handleOpenModal('Overall Enterprise - Success Logs', 'success', allSuccess, 'emerald');
+                    }
+                  }}
+                  className={`flex items-center gap-1.5 text-[11px] font-black uppercase ${totalSuccess === 0 ? 'text-slate-400' : 'text-emerald-600 cursor-pointer hover:underline'}`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${totalSuccess === 0 ? 'bg-slate-300' : 'bg-emerald-500'}`}></span>
+                  <span>{loading ? '...' : totalSuccess} Green</span>
+                </div>
+                <div 
+                  onClick={() => {
+                    if (totalAlerts > 0) {
+                      const allAlerts = [];
+                      if (metrics) {
+                        Object.keys(metrics).forEach(key => {
+                          if (metrics[key]?.alertsList) {
+                            allAlerts.push(...metrics[key].alertsList);
+                          }
+                        });
+                      }
+                      handleOpenModal('Overall Enterprise - Alert Flags', 'alert', allAlerts, 'orange');
+                    }
+                  }}
+                  className={`flex items-center gap-1.5 text-[11px] font-black uppercase ${totalAlerts === 0 ? 'text-slate-400' : 'text-orange-600 cursor-pointer hover:underline'}`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${totalAlerts === 0 ? 'bg-slate-300' : 'bg-orange-500'}`}></span>
+                  <span>{loading ? '...' : totalAlerts} Red</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="w-full h-px bg-slate-200/60"></div>
+
+          {/* Bottom part: Month Selection dropdown */}
+          <div className="w-full relative">
+            <button
+              onClick={() => setShowMonthDropdown(!showMonthDropdown)}
+              className="w-full py-1.5 px-2 bg-slate-50 border border-slate-100 hover:bg-slate-100 hover:border-slate-200 text-xs font-black uppercase tracking-wider text-slate-700 rounded-lg flex items-center justify-between transition-all"
+            >
+              <span>Period: {getSelectedMonthLabel()}</span>
+              <span className="text-slate-400 text-[8px]">▼</span>
+            </button>
+            
+            {showMonthDropdown && (
+              <div className="absolute top-full mt-1 left-0 right-0 z-50 bg-white border border-slate-200/80 rounded-xl shadow-xl p-0.5 max-h-48 overflow-y-auto scrollbar-none flex flex-col gap-0.5 animate-scale-up">
+                <button
+                  onClick={() => {
+                    setSelectedMonth('overall');
+                    setShowMonthDropdown(false);
+                  }}
+                  className={`px-2.5 py-1.5 text-xs font-black text-left uppercase tracking-wider rounded-lg transition-all ${
+                    selectedMonth === 'overall'
+                      ? 'bg-slate-900 text-white'
+                      : 'hover:bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  Overall (12m)
+                </button>
+                <div className="h-px bg-slate-100 my-0.5"></div>
+                {months.map(m => (
+                  <button
+                    key={m.value}
+                    onClick={() => {
+                      setSelectedMonth(m.value);
+                      setShowMonthDropdown(false);
+                    }}
+                    className={`px-2.5 py-1.5 text-xs font-bold text-left uppercase tracking-wider rounded-lg transition-all ${
+                      selectedMonth === m.value
+                        ? 'bg-emerald-500 text-white'
+                        : 'hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    {m.label} {currentYear}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </motion.div>
+
         <div className="hidden md:flex items-center gap-5 bg-white px-6 py-4 rounded-2xl border border-slate-100 shadow-sm">
           <img src={PivotPathLogo} alt="PivotPath Logo" className="w-20 h-20 object-contain rounded-xl" />
           <div>
@@ -225,6 +473,7 @@ const Dashboard = () => {
               liveMetrics={metrics ? metrics[mod.key] : null}
               loading={loading}
               onSelect={(moduleKey) => navigate(`/portal/pillar/${moduleKey}`)}
+              onViewDetails={handleOpenModal}
             />
           ))}
         </div>
@@ -250,7 +499,7 @@ const Dashboard = () => {
         </div>
 
       </div>
-      <div className="mb-8">
+      {/* <div className="mb-8">
         <span className="text-[10px] lg:text-xs font-black uppercase tracking-[0.3em] text-slate-400 block mb-3 mt-3">
           Special Departments
         </span>
@@ -267,7 +516,92 @@ const Dashboard = () => {
             </button>
           ))}
         </div>
-      </div>
+      </div> */}
+
+      {/* Modal Detail Drilldown Table */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[85vh] shadow-2xl border border-slate-100 flex flex-col overflow-hidden animate-scale-up">
+            {/* Header */}
+            <div className={`p-6 text-white bg-gradient-to-r ${modalColor === 'emerald' ? 'from-emerald-500 to-teal-600' : 'from-orange-500 to-red-600'} flex items-center justify-between`}>
+              <div>
+                <h2 className="text-lg font-black uppercase tracking-wider">{modalTitle}</h2>
+                <p className="text-[10px] text-white/80 font-bold uppercase tracking-widest mt-0.5">
+                  Total Records Found: {modalData.length}
+                </p>
+              </div>
+              <button 
+                onClick={() => setModalOpen(false)}
+                className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center font-black transition-all text-white text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Table Body */}
+            <div className="p-6 overflow-y-auto flex-1">
+              {modalData.length === 0 ? (
+                <div className="text-center py-10 text-slate-400 font-bold uppercase text-xs">
+                  No entries found for this category
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-slate-100 rounded-2xl shadow-inner">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">
+                        <th className="p-4">Department</th>
+                        <th className="p-4 text-center">Shift</th>
+                        <th className="p-4">Date</th>
+                        <th className="p-4">Remarks / Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                      {modalData.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="p-4 font-bold text-slate-800">{row.dept}</td>
+                          <td className="p-4 text-center">
+                            <span className="px-2 py-0.5 bg-slate-100 rounded-md text-[9px] font-black uppercase">
+                              S{row.shift}
+                            </span>
+                          </td>
+                          <td className="p-4 text-slate-500 whitespace-nowrap">{row.date}</td>
+                          <td className="p-4 text-slate-600 max-w-sm truncate md:max-w-none md:whitespace-normal">
+                            {row.detail}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  const headers = ['Department', 'Shift', 'Date', 'Remarks / Details'];
+                  const rows = modalData.map(row => [row.dept, `Shift ${row.shift}`, row.date, row.detail]);
+                  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+                  const a = document.createElement('a');
+                  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+                  a.download = `${modalTitle.replace(/\s+/g, '_')}_Data.csv`;
+                  a.click();
+                }}
+                className="px-6 py-2 bg-emerald-600 text-white text-xs font-black uppercase tracking-wider rounded-2xl hover:bg-emerald-750 transition-colors flex items-center gap-1.5"
+              >
+                <Download size={13} /> Download (CSV)
+              </button>
+              <button
+                onClick={() => setModalOpen(false)}
+                className="px-6 py-2 bg-slate-900 text-white text-xs font-black uppercase tracking-wider rounded-2xl hover:bg-slate-800 transition-colors"
+              >
+                Close Log
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 };
@@ -348,13 +682,13 @@ const ShiftPickerRoute = ({ user }) => {
   const { dept, module } = useParams();
   if (!user) return <Navigate to="/login" />;
   if (!VALID_DEPTS.includes(dept) || !VALID_MODULES.includes(module)) return <Navigate to="/" />;
-  return <Navigate to={`/shift/1/${dept}/${module}`} replace />;
+  return <Navigate to={`/shift/overall/${dept}/${module}`} replace />;
 };
 
 const ModuleRoute = ({ user }) => {
   const { shift, dept, module } = useParams();
   if (!user) return <Navigate to="/login" />;
-  if (!['1', '2', '3'].includes(shift) || !VALID_DEPTS.includes(dept) || !VALID_MODULES.includes(module)) {
+  if (!['1', '2', '3', 'overall'].includes(shift) || !VALID_DEPTS.includes(dept) || !VALID_MODULES.includes(module)) {
     return <Navigate to="/" />;
   }
   if (module === 'q') return <QualityPage />;

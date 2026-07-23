@@ -72,7 +72,9 @@ const Navbar = () => {
             {currentShift && (
               <>
                 <span className="text-slate-300">/</span>
-                <span className="bg-slate-100 px-2 py-0.5 rounded-full text-slate-600">Shift {currentShift}</span>
+                <span className="bg-slate-100 px-2 py-0.5 rounded-full text-slate-600">
+                  {currentShift === 'overall' ? 'Overall' : `Shift ${currentShift}`}
+                </span>
               </>
             )}
           </div>
@@ -115,10 +117,11 @@ const Navbar = () => {
               <div className="hidden lg:flex items-center gap-2 border-l pl-3 border-slate-200">
                 <label className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Shift</label>
                 <select
-                  value={currentShift || '1'}
+                  value={currentShift || 'overall'}
                   onChange={(e) => navigate(`/shift/${e.target.value}/${currentDept}/${currentModule}`)}
                   className="bg-slate-100 border border-slate-200 text-slate-700 text-xs font-black uppercase tracking-wider rounded-2xl px-3 py-2 outline-none"
                 >
+                  <option value="overall">Overall</option>
                   <option value="1">Shift 1</option>
                   <option value="2">Shift 2</option>
                   <option value="3">Shift 3</option>

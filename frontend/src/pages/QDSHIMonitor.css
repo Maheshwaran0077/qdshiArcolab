@@ -95,7 +95,7 @@
 /* Grid */
 .qdshi-grid {
     display: grid;
-    grid-template-columns: 130px repeat(4, 1fr);
+    grid-template-columns: 250px repeat(4, 1fr);
     grid-gap: 15px 20px;
     align-items: stretch;
 }

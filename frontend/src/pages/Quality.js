@@ -19,7 +19,7 @@ const getISTTime = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asi
 const MySwal = withReactContent(Swal);
 const API_BASE_URL = `${process.env.REACT_APP_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin)}/api/metrics`;
 const API = process.env.REACT_APP_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin);
-const DEPT_FULL = { fg: 'Finished Good Material Warehouse', pm: 'Packing Material Warehouse', rm: 'Raw Material Warehouse' };
+const DEPT_FULL = { fgmw: 'Finished Goods Material Warehouse', fg: 'Finished Goods Material Warehouse', pmw: 'Packing Material Warehouse', pm: 'Packing Material Warehouse', rmw: 'Raw Material Warehouse', rm: 'Raw Material Warehouse', qcmad: 'QC & Microbiology Lab', pro: 'Production', pop: 'Post Production', ppp: 'Primary Packing Production', spp: 'Secondary Packing Production', fac: 'Facilities', ehs: 'Environment, Health & Safety', engineering: 'Engineering & Works Management', hr: 'Human Resources' };
 
 const Toast = Swal.mixin({
   toast: true,
@@ -50,7 +50,7 @@ export default function QualityPage() {
   const isSupervisor = user?.role === 'supervisor';
   const userDepts = (user?.department || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   const isAssignedDept = isSuperAdmin || userDepts.includes((dept || '').toLowerCase());
-  const canUpdate = (isSupervisor && isAssignedDept) || isSuperAdmin;
+  const canUpdate = ((isSupervisor && isAssignedDept) || isSuperAdmin) && shift !== 'overall';
 
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(initialData);
@@ -58,6 +58,11 @@ export default function QualityPage() {
   const [selectedIssue, setSelectedIssue] = useState("Target Met");
   const [deviationType, setDeviationType] = useState("");
   const [customReason, setCustomReason] = useState("");
+  const [assignedId, setAssignedId] = useState("");
+  const [assignedName, setAssignedName] = useState("");
+  const [reporterName, setReporterName] = useState("");
+  const [reporterId, setReporterId] = useState("");
+  const [alertBrief, setAlertBrief] = useState("");
   const [viewDate, setViewDate] = useState(new Date());
   const [customDate, setCustomDate] = useState(getISTDate);
 
@@ -70,16 +75,68 @@ export default function QualityPage() {
     fetch(`${API}/api/timelock/${dept || 'fgmw'}/${shift || '1'}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => setTimeLock(d))
-      .catch(() => {});
+      .catch(() => { });
   }, [shift, dept]);
 
   const viewMonthName = viewDate.toLocaleString('default', { month: 'long' }).toUpperCase();
   const viewYear = viewDate.getFullYear();
 
-  const qData = useMemo(() => metrics.find(m => m.letter === 'Q') || initialData[0], [metrics]);
+  const qData = useMemo(() => {
+    const found = metrics.find(m => m.letter === 'Q') || initialData[0];
+    if (shift === 'overall') {
+      const allIssueLogs = [];
+      const allStaffLogs = [];
+      const allActivityLogs = [];
+      ['1', '2', '3'].forEach(s => {
+        const sData = found.shifts?.[s] || {};
+        const logs = (sData.issueLogs || []).map(l => ({ ...l, shift: s }));
+        allIssueLogs.push(...logs);
+        if (Array.isArray(sData.staffLogs)) allStaffLogs.push(...sData.staffLogs);
+        if (Array.isArray(sData.activityLogs)) allActivityLogs.push(...sData.activityLogs);
+      });
+      return { ...found, issueLogs: allIssueLogs, staffLogs: allStaffLogs, activityLogs: allActivityLogs };
+    } else {
+      const shiftData = found.shifts?.[shift] || {};
+      return { ...found, ...shiftData, issueLogs: Array.isArray(shiftData.issueLogs) ? shiftData.issueLogs : [] };
+    }
+  }, [metrics, shift]);
 
   const notifySuccess = (msg) => Toast.fire({ icon: 'success', title: msg });
   const notifyError = (msg) => Toast.fire({ icon: 'error', title: msg });
+
+  const handleShowLogDetails = (log) => {
+    MySwal.fire({
+      title: `<span class="text-sm font-black text-slate-800 uppercase tracking-wider">Complaint Detail</span>`,
+      html: `
+        <div class="text-left space-y-3 text-xs p-2">
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Date & Time:</strong> <span class="font-bold text-slate-700">${log.date || ''} ${log.time || ''}</span></div>
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Issue Type:</strong> <span class="font-bold text-slate-700">${log.issueType || 'N/A'}</span></div>
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Reporter:</strong> <span class="font-bold text-slate-700">${log.reporter || 'N/A'}</span></div>
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Assigned To:</strong> <span class="font-bold text-slate-700">${log.assignedName || 'N/A'} (ID: ${log.assignedId || 'N/A'})</span></div>
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Status:</strong> <span class="font-bold ${log.resolved ? 'text-emerald-600' : 'text-rose-600'} uppercase">${log.resolved ? 'Resolved' : 'Pending'}</span></div>
+          <div class="flex justify-between"><strong class="text-slate-500 uppercase">Action Status:</strong> <span class="font-bold text-slate-700">${log.action || 'No action taken yet'}</span></div>
+        </div>
+      `,
+      confirmButtonText: 'CLOSE',
+      confirmButtonColor: '#475569'
+    });
+  };
+
+  const handleShowActionDetails = (log) => {
+    MySwal.fire({
+      title: `<span class="text-sm font-black text-slate-800 uppercase tracking-wider">Action Log Detail</span>`,
+      html: `
+        <div class="text-left space-y-3 text-xs p-2">
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Employee ID:</strong> <span class="font-bold text-slate-700">${log.id || 'N/A'}</span></div>
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Description:</strong> <span class="font-bold text-slate-700">${log.name || 'N/A'}</span></div>
+          <div class="flex justify-between border-b pb-1.5"><strong class="text-slate-500 uppercase">Action Taken:</strong> <span class="font-bold text-slate-700">${log.action || 'N/A'}</span></div>
+          <div class="flex justify-between"><strong class="text-slate-500 uppercase">Time:</strong> <span class="font-bold text-slate-700">${log.time || 'N/A'}</span></div>
+        </div>
+      `,
+      confirmButtonText: 'CLOSE',
+      confirmButtonColor: '#475569'
+    });
+  };
 
   const confirmDelete = async (itemType = "record") => {
     return await MySwal.fire({
@@ -117,6 +174,14 @@ export default function QualityPage() {
   const handleUpdateStatus = async () => {
     if (!canUpdate) return;
     const resolvedReason = selectedIssue === "Others" ? (customReason.trim() || "Others") : selectedIssue;
+    
+    if (resolvedReason !== "Target Met") {
+      if (!reporterName.trim() || !reporterId.trim() || !alertBrief.trim() || !assignedName.trim() || !assignedId.trim()) {
+        notifyError("Please fill in all alert details (Reporter Name & ID, Alert Brief, and Assigned Employee Name & ID).");
+        return;
+      }
+    }
+
     let updatedLogs = Array.isArray(qData.issueLogs) ? [...qData.issueLogs] : [];
     const [y, m, d] = customDate.split('-');
     const newEntry = {
@@ -130,18 +195,48 @@ export default function QualityPage() {
     const idx = updatedLogs.findIndex(log => log.rawDate === customDate);
     if (idx !== -1) updatedLogs[idx] = newEntry; else updatedLogs.push(newEntry);
 
+    let newStaffLogs = [...staffLogs];
+    if (resolvedReason !== "Target Met") {
+      const newIssue = {
+        id: assignedId,
+        name: `${alertBrief} (Reported by: ${reporterName} - ID: ${reporterId})`,
+        action: "",
+        time: getISTTime(),
+        resolved: false,
+        issueType: resolvedReason,
+        reporter: `${reporterName} (${reporterId})`,
+        assignedName: assignedName,
+        assignedId: assignedId,
+        date: `${d}/${m}/${y}`
+      };
+      newStaffLogs = [newIssue, ...newStaffLogs];
+    }
+
     try {
       const res = await fetch(`${API_BASE_URL}/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...qData, shift: shift || '1', dept: dept || 'fgmw', issueLogs: updatedLogs, empId: user?.employeeId, empName: user?.name, userRole: user?.role })
       });
+
+      if (resolvedReason !== "Target Met") {
+        await fetch(`${API_BASE_URL}/staff`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ letter: 'Q', shift: shift || '1', dept: dept || 'fgmw', logs: newStaffLogs, empId: user?.employeeId, empName: user?.name, userRole: user?.role }),
+        });
+      }
+
       if (res.ok) {
-        const saved = await res.json();
-        setMetrics(prev => prev.map(m => m.letter === 'Q' ? { ...m, ...saved } : m));
+        await fetchMetrics();
         setIsModalOpen(false);
         setDeviationType("");
         setCustomReason("");
+        setAssignedId("");
+        setAssignedName("");
+        setReporterName("");
+        setReporterId("");
+        setAlertBrief("");
         notifySuccess(`Shift ${shift} Updated`);
       } else {
         const err = await res.json().catch(() => ({}));
@@ -251,30 +346,59 @@ export default function QualityPage() {
     } catch { notifyError('Failed to download all-shifts data'); }
   };
 
-  useEffect(() => {
-    const fetchMetrics = async () => {
-      setLoading(true);
-      try {
-        // Pass shift and dept as query params
-        const url = `${API_BASE_URL}?shift=${shift}&dept=${dept}`;
-        const response = await fetch(url);
-        const dbData = await response.json();
-
-        if (dbData && Array.isArray(dbData)) {
-          // Find the Quality metric for THIS specific shift (filtered by backend)
-          const qLive = dbData.find(d => d.letter === 'Q');
-
-          // Update local state with shift-specific data
-          setMetrics(dbData);
-          setStaffLogs(qLive?.staffLogs || []);
-          setActivityLogs(qLive?.activityLogs || []);
+  const allShiftsStats = useMemo(() => {
+    let totalSuccess = 0;
+    let totalAlerts = 0;
+    const qMetric = metrics.find(m => m.letter === 'Q') || initialData[0];
+    ['1', '2', '3'].forEach(s => {
+      const logs = qMetric.shifts?.[s]?.issueLogs || [];
+      logs.forEach(log => {
+        const logD = new Date(log.rawDate);
+        if (logD.getMonth() === viewDate.getMonth() && logD.getFullYear() === viewYear) {
+          if (log.reason === "Target Met") totalSuccess++;
+          else totalAlerts++;
         }
-      } catch (error) {
-        console.error("Fetch error:", error);
-      } finally {
-        setLoading(false);
+      });
+    });
+    const total = totalSuccess + totalAlerts;
+    const successPercent = total ? Math.round((totalSuccess / total) * 100) : 0;
+    return { successPercent, totalSuccess, totalAlerts, total };
+  }, [metrics, viewDate, viewYear]);
+
+  const fetchMetrics = async () => {
+    setLoading(true);
+    try {
+      const url = `${API_BASE_URL}?dept=${dept || 'fgmw'}`;
+      const response = await fetch(url);
+      const dbData = await response.json();
+
+      if (dbData && Array.isArray(dbData)) {
+        const qLive = dbData.find(d => d.letter === 'Q');
+        setMetrics(dbData);
+        if (shift === 'overall') {
+          const allStaffLogs = [];
+          const allActivityLogs = [];
+          ['1', '2', '3'].forEach(s => {
+            const activeShiftData = qLive?.shifts?.[s] || {};
+            if (Array.isArray(activeShiftData.staffLogs)) allStaffLogs.push(...activeShiftData.staffLogs);
+            if (Array.isArray(activeShiftData.activityLogs)) allActivityLogs.push(...activeShiftData.activityLogs);
+          });
+          setStaffLogs(allStaffLogs);
+          setActivityLogs(allActivityLogs);
+        } else {
+          const activeShiftData = qLive?.shifts?.[shift] || {};
+          setStaffLogs(activeShiftData.staffLogs || []);
+          setActivityLogs(activeShiftData.activityLogs || []);
+        }
       }
-    };
+    } catch (error) {
+      console.error("Fetch error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchMetrics();
   }, [shift, dept]); // Refetch whenever the shift changes in the URL
 
@@ -288,7 +412,12 @@ export default function QualityPage() {
       if (logD.getMonth() === viewDate.getMonth() && logD.getFullYear() === viewYear) {
         const idx = logD.getDate() - 1;
         if (idx >= 0 && idx < baseDays.length) {
-          baseDays[idx] = log.reason === "Target Met" ? "success" : "fail";
+          const status = log.reason === "Target Met" ? "success" : "fail";
+          if (baseDays[idx] === "fail" || status === "fail") {
+            baseDays[idx] = "fail";
+          } else {
+            baseDays[idx] = "success";
+          }
         }
       }
     });
@@ -337,17 +466,17 @@ export default function QualityPage() {
   return (
     <div className="min-h-screen bg-[#F0F4F8] text-[#334155] font-sans flex flex-col">
       <nav className="flex justify-between items-center px-4 sm:px-6 py-3 bg-[#F0F4F8] sticky top-0 z-50">
-        <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-[#475569] font-bold text-xs uppercase hover:text-emerald-600 transition-colors">
+        <button onClick={() => navigate('/monitor')} className="flex items-center gap-1.5 text-[#475569] font-bold text-xs uppercase hover:text-emerald-600 transition-colors">
           <ChevronLeft size={18} /> <span className="hidden sm:inline">Back</span>
         </button>
         <div className="flex items-center gap-2">
           <button onClick={downloadCSV}
             className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-full font-bold text-xs shadow-sm transition-all">
-            <Download size={13}/> <span className="hidden sm:inline">Shiftwise</span>
+            <Download size={13} /> <span className="hidden sm:inline">Shiftwise</span>
           </button>
           <button onClick={downloadAllShiftsCSV}
             className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-full font-bold text-xs shadow-sm transition-all">
-            <Download size={13}/> <span className="hidden sm:inline">Overall</span>
+            <Download size={13} /> <span className="hidden sm:inline">Overall</span>
           </button>
           {canUpdate && (
             <button
@@ -363,9 +492,22 @@ export default function QualityPage() {
       <div className="px-4 sm:px-6 mb-4 mt-1">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Quality — Shift {shift}</h1>
+            <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Quality — {shift === 'overall' ? 'Overall' : `Shift ${shift}`}</h1>
             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-0.5">{DEPT_FULL[dept] || dept?.toUpperCase()}</p>
           </div>
+
+          {/* Centered Shift vs All-Shifts Overall performance */}
+          <div className="flex items-center gap-6 justify-center sm:mx-auto select-none">
+            <div className="text-center px-4 border-r border-slate-200">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">{shift === 'overall' ? 'Overall' : `Shift ${shift}`} Yield</span>
+              <span className="text-base font-black text-slate-850">{stats.success + stats.alerts ? Math.round((stats.success / (stats.success + stats.alerts)) * 100) : 0}%</span>
+            </div>
+            <div className="text-center px-4">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">All-Shifts Yield</span>
+              <span className="text-base font-black text-emerald-650">{allShiftsStats.successPercent}%</span>
+            </div>
+          </div>
+
           {timeLock?.enabled && (
             <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-full self-start sm:self-auto">
               <span className="text-base">⏰</span>
@@ -388,7 +530,39 @@ export default function QualityPage() {
           </div>
           <span className="text-2xl font-black text-slate-800 uppercase tracking-tighter">{qData.name}</span>
           <div className="flex-1 flex items-center justify-center min-h-[250px] w-full max-w-[300px] relative">
-            <CircularTracker letter={qData.letter} daysData={dynamicDaysData} size={window.innerWidth < 640 ? 220 : 280} />
+            <CircularTracker
+              letter={qData.letter}
+              daysData={dynamicDaysData}
+              size={window.innerWidth < 640 ? 220 : 280}
+              onDayClick={(dayNum) => {
+                if (!canUpdate) return;
+                const clickedDateStr = `${viewYear}-${String(viewDate.getMonth() + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+
+                if (isSupervisor && clickedDateStr !== getISTDate()) {
+                  notifyError("Supervisors can only update today's date");
+                  return;
+                }
+
+                const existing = qData.issueLogs?.find(log => log.rawDate === clickedDateStr);
+                if (existing) {
+                  const isPredefined = ["Target Met", "Machine Breakdown", "No Power", "No Manpower", "Quality Reject"].includes(existing.reason);
+                  if (isPredefined) {
+                    setSelectedIssue(existing.reason);
+                    setCustomReason("");
+                  } else {
+                    setSelectedIssue("Others");
+                    setCustomReason(existing.reason);
+                  }
+                  setDeviationType(existing.deviationType || "");
+                } else {
+                  setSelectedIssue("Target Met");
+                  setCustomReason("");
+                  setDeviationType("");
+                }
+                setCustomDate(clickedDateStr);
+                setIsModalOpen(true);
+              }}
+            />
           </div>
           <div className="grid grid-cols-3 gap-2 w-full mt-6">
             <StatBox val={stats.alerts} label="Alerts" type="red" />
@@ -405,6 +579,7 @@ export default function QualityPage() {
                 <thead className="bg-[#E2E8F0] sticky top-0 z-20 shadow-sm text-[#64748B] font-black uppercase">
                   <tr>
                     <th className="p-2 text-left rounded-tl-xl">Date</th>
+                    {shift === 'overall' && <th className="p-2 text-left">Shift</th>}
                     <th className="p-2 text-left">Reason</th>
                     <th className="p-2 text-left">Deviation</th>
                     <th className="p-2 text-right rounded-tr-xl">Action</th>
@@ -414,9 +589,16 @@ export default function QualityPage() {
                   {filteredLogs.length > 0 ? filteredLogs.map((log, i) => (
                     <tr key={i} className="hover:bg-slate-50 transition-colors">
                       <td className="p-2 font-bold text-slate-500 whitespace-nowrap">{log.date}</td>
+                      {shift === 'overall' && (
+                        <td className="p-2 font-bold text-slate-500 whitespace-nowrap">
+                          <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full text-[9px] font-black uppercase">
+                            S{log.shift}
+                          </span>
+                        </td>
+                      )}
                       <td className={`p-2 font-black uppercase tracking-tight ${log.reason === 'Target Met' ? 'text-emerald-500' : 'text-red-500'}`}>
                         <div className="flex items-center gap-1">
-                          <div className={`w-1.5 h-1.5 rounded-full ${log.reason === 'Target Met' ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
+                          <div className={`w-1.5 h-1.5 rounded-full ${log.reason === 'Target Met' ? 'bg-emerald-500' : 'bg-red-500'}`} />
                           {log.reason}
                         </div>
                       </td>
@@ -501,7 +683,7 @@ export default function QualityPage() {
         <div className="col-span-12 grid grid-cols-1 lg:grid-cols-2 gap-4">
           <LogTable
             type="staff"
-            title="Team & Staff Compliance"
+            title="Issues & Compliance"
             icon={<User size={14} className="text-emerald-500" />}
             logs={staffLogs}
             isSuperAdmin={isSuperAdmin}
@@ -511,11 +693,76 @@ export default function QualityPage() {
             onChange={(i, f, v) => handleLogChange('staff', i, f, v)}
             loading={tableSyncing.staff}
             theme="emerald"
+            onShowDetails={handleShowLogDetails}
+            onToggleResolve={async (index, isResolved) => {
+              const confirm = await MySwal.fire({
+                title: 'Are you sure?',
+                text: `Do you want to mark this issue as ${isResolved ? 'Resolved' : 'Pending'}?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#10B981',
+                cancelButtonColor: '#EF4444',
+                confirmButtonText: 'Yes',
+                cancelButtonText: 'No'
+              });
+              if (!confirm.isConfirmed) return;
+
+              let actionTaken = "";
+              if (isResolved) {
+                const currentIssue = staffLogs[index];
+                actionTaken = `Resolved on ${currentIssue.date || getISTDate()}`;
+              }
+
+              // Update staff logs state
+              const updatedStaff = [...staffLogs];
+              updatedStaff[index] = { ...updatedStaff[index], resolved: isResolved, action: actionTaken };
+              setStaffLogs(updatedStaff);
+
+              // Update activity logs state to prevent duplicate/double insertions
+              let updatedActivity = [...activityLogs];
+              const issueIdRef = updatedStaff[index].id || updatedStaff[index].assignedId || 'N/A';
+              
+              if (isResolved && actionTaken) {
+                const exists = activityLogs.some(act => act.issueRef === issueIdRef && act.action.startsWith("Resolved"));
+                if (!exists) {
+                  const newAct = {
+                    id: issueIdRef,
+                    name: `Action on ${updatedStaff[index].issueType || 'Issue'}: Resolved`,
+                    action: actionTaken,
+                    time: getISTTime(),
+                    issueRef: issueIdRef
+                  };
+                  updatedActivity = [newAct, ...updatedActivity];
+                  setActivityLogs(updatedActivity);
+                }
+              } else {
+                updatedActivity = activityLogs.filter(act => act.issueRef !== issueIdRef);
+                setActivityLogs(updatedActivity);
+              }
+
+              // Save directly to DB to keep sync
+              try {
+                await fetch(`${API_BASE_URL}/staff`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ letter: 'Q', shift: shift || '1', dept: dept || 'fgmw', logs: updatedStaff, empId: user?.employeeId, empName: user?.name, userRole: user?.role })
+                });
+                await fetch(`${API_BASE_URL}/activity`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ letter: 'Q', shift: shift || '1', dept: dept || 'fgmw', logs: updatedActivity, empId: user?.employeeId, empName: user?.name, userRole: user?.role })
+                });
+                await fetchMetrics();
+                notifySuccess(isResolved ? "Issue resolved & synchronized" : "Issue marked as pending");
+              } catch (e) {
+                notifyError("Sync failed");
+              }
+            }}
           />
 
           <LogTable
             type="activity"
-            title="Operational Quality Logs"
+            title="Actions Quality Logs"
             icon={<Activity size={14} className="text-blue-500" />}
             logs={activityLogs}
             isSuperAdmin={isSuperAdmin}
@@ -525,6 +772,7 @@ export default function QualityPage() {
             onChange={(i, f, v) => handleLogChange('activity', i, f, v)}
             loading={tableSyncing.activity}
             theme="blue"
+            onShowDetails={handleShowActionDetails}
           />
         </div>
       </main>
@@ -577,16 +825,41 @@ export default function QualityPage() {
                 </div>
               )}
               {selectedIssue !== "Target Met" && (
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 ml-1">Deviation Type</label>
-                  <select value={deviationType} onChange={(e) => setDeviationType(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 text-sm outline-none focus:ring-2 ring-emerald-500">
-                    <option value="">-- Select Deviation Type --</option>
-                    <option value="Human Error">Human Error</option>
-                    <option value="Process Error">Process Error</option>
-                  </select>
-                </div>
+                <>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 ml-1">Deviation Type</label>
+                    <select value={deviationType} onChange={(e) => setDeviationType(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 text-sm outline-none focus:ring-2 ring-emerald-500">
+                      <option value="">-- Select Deviation Type --</option>
+                      <option value="Human Error">Human Error</option>
+                      <option value="Process Error">Process Error</option>
+                    </select>
+                  </div>
+                  <div className="space-y-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/60 mt-1 select-none">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Alert Details (Action Logs Entry)</span>
+                    <div>
+                      <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Reporter Name</label>
+                      <input type="text" value={reporterName} onChange={(e) => setReporterName(e.target.value)} placeholder="Enter Reporter Name" className="w-full bg-white border border-slate-250 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2 ring-emerald-500 font-semibold" />
+                    </div>
+                    <div>
+                      <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Reporter Employee ID</label>
+                      <input type="text" value={reporterId} onChange={(e) => setReporterId(e.target.value)} placeholder="Enter Reporter ID" className="w-full bg-white border border-slate-250 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2 ring-emerald-500 font-semibold" />
+                    </div>
+                    <div>
+                      <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Brief Description of Alert</label>
+                      <textarea value={alertBrief} onChange={(e) => setAlertBrief(e.target.value)} placeholder="What was the alert? Describe briefly" className="w-full bg-white border border-slate-250 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2 ring-emerald-500 font-semibold resize-none h-16" />
+                    </div>
+                    <div>
+                      <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Assigned Employee ID</label>
+                      <input type="text" value={assignedId} onChange={(e) => setAssignedId(e.target.value)} placeholder="Enter ID (e.g. EMP-101)" className="w-full bg-white border border-slate-250 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2 ring-emerald-500 font-semibold" />
+                    </div>
+                    <div>
+                      <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Assigned Employee Name</label>
+                      <input type="text" value={assignedName} onChange={(e) => setAssignedName(e.target.value)} placeholder="Enter Name (e.g. John Doe)" className="w-full bg-white border border-slate-250 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-2 ring-emerald-500 font-semibold" />
+                    </div>
+                  </div>
+                </>
               )}
-              <button onClick={handleUpdateStatus} className="w-full bg-emerald-600 py-3 sm:py-4 rounded-xl font-black uppercase text-[11px] text-white tracking-widest hover:bg-emerald-700 active:scale-95 transition-all">UPDATE DATA</button>
+              <button onClick={handleUpdateStatus} className="w-full bg-emerald-600 py-3 sm:py-4 rounded-xl font-black uppercase text-[11px] text-white tracking-widest hover:bg-emerald-700 active:scale-95 transition-all mt-3">UPDATE DATA</button>
             </div>
           </div>
         </div>
@@ -597,7 +870,7 @@ export default function QualityPage() {
 
 // --- SUB-COMPONENTS ---
 
-const LogTable = ({ title, icon, logs, isSuperAdmin, onAdd, onUpdate, onRemove, onChange, loading, theme }) => {
+const LogTable = ({ type, title, icon, logs, isSuperAdmin, onAdd, onUpdate, onRemove, onChange, loading, theme, onToggleResolve, onShowDetails }) => {
   const themeStyles = {
     emerald: {
       bg: 'bg-emerald-50/30',
@@ -630,53 +903,77 @@ const LogTable = ({ title, icon, logs, isSuperAdmin, onAdd, onUpdate, onRemove, 
           {icon}
           <h3 className={`font-black text-[10px] ${style.text} tracking-widest uppercase`}>{title}</h3>
         </div>
-        <div className="flex gap-2">
-          <button onClick={handleAddRow} className="bg-white border border-slate-200 px-3 py-2 rounded-lg text-[9px] font-black uppercase hover:bg-slate-50 transition-all active:scale-95">Add Row</button>
-          <button onClick={onUpdate} disabled={loading} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase text-white shadow-sm transition-all ${loading ? 'bg-slate-300 cursor-not-allowed' : `${style.btn} active:scale-95 hover:shadow-md`}`}>
-            {loading ? 'Syncing...' : 'Save Changes'}
-          </button>
-        </div>
       </div>
 
-      <div className="px-4 py-2 bg-slate-50 flex gap-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-        <span className="w-20">Emp ID / Ref</span>
-        <span className="flex-1">Name / Description</span>
-        <span className="flex-1">Action Taken</span>
+      <div className="px-4 py-2 bg-slate-50 flex gap-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 select-none">
+        <span className="w-20">{type === 'staff' ? 'Date' : 'Employee ID'}</span>
+        <span className="flex-1">{type === 'staff' ? 'Assigned To' : 'Description'}</span>
+        <span className="flex-1">{type === 'staff' ? 'Action Status' : 'Action Taken'}</span>
         <span className="w-12 text-right">Time</span>
+        {type === 'staff' && <span className="w-20 text-center">Resolve</span>}
         {isSuperAdmin && <span className="w-6"></span>}
       </div>
 
       <div className="overflow-y-auto flex-1 p-4 divide-y divide-slate-100 custom-scrollbar" data-log-table={title}>
         {logs.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center opacity-30 italic text-[10px] font-bold py-10">No records found. Click "Add Row" to create one.</div>
-        ) : logs.map((log, i) => (
-          <div key={i} className={`py-2.5 flex gap-4 items-center group rounded-lg transition-all px-2 ${i === 0 && (!log.id && !log.name && !log.action) ? 'bg-emerald-50/50 border-l-4 border-emerald-500 hover:bg-emerald-50/70' : 'hover:bg-slate-50/50'}`}>
-            <input
-              className="w-20 text-[10px] font-bold text-slate-500 bg-slate-100/50 p-1.5 rounded border border-transparent focus:border-slate-300 outline-none transition-colors"
-              value={log.id}
-              onChange={(e) => onChange(i, 'id', e.target.value)}
-            />
-            <input
-              className="flex-1 text-[11px] font-bold text-slate-700 outline-none border-b border-transparent focus:border-emerald-300 transition-colors bg-transparent"
-              placeholder="Name/Item"
-              value={log.name}
-              onChange={(e) => onChange(i, 'name', e.target.value)}
-            />
-            <input
-              className="flex-1 text-[10px] font-medium text-slate-500 outline-none border-b border-transparent focus:border-emerald-300 bg-transparent"
-              placeholder="Detailed action..."
-              value={log.action}
-              onChange={(e) => onChange(i, 'action', e.target.value)}
-            />
-            <div className="flex items-center gap-1 w-12 text-right">
-              <Clock size={10} className="text-slate-300" />
-              <span className="text-[9px] font-black text-slate-400">{log.time}</span>
+        ) : logs.map((log, i) => {
+          const isStaff = type === 'staff';
+          const isResolved = log.resolved === true;
+          const rowBgClass = isStaff 
+            ? (isResolved ? 'bg-emerald-50/50 border-l-4 border-emerald-500 hover:bg-emerald-100/50' : 'bg-red-50/55 border-l-4 border-red-400 hover:bg-red-100/50')
+            : (i === 0 && (!log.id && !log.name && !log.action) ? 'bg-emerald-50/50 border-l-4 border-emerald-500 hover:bg-emerald-50/70' : 'hover:bg-slate-50/50');
+
+          return (
+            <div 
+              key={i} 
+              onClick={(e) => {
+                if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON' && !e.target.closest('button')) {
+                  if (onShowDetails) onShowDetails(log);
+                }
+              }}
+              className={`py-2.5 flex gap-4 items-center group rounded-lg transition-all px-2 cursor-pointer ${rowBgClass}`}
+            >
+              <input
+                className="w-20 text-[10px] font-bold text-slate-500 bg-slate-100/50 p-1.5 rounded border border-transparent focus:border-slate-300 outline-none transition-colors"
+                value={isStaff ? (log.date || log.rawDate || '') : log.id}
+                onChange={(e) => onChange(i, isStaff ? 'date' : 'id', e.target.value)}
+              />
+              <input
+                className="flex-1 text-[11px] font-bold text-slate-700 outline-none border-b border-transparent focus:border-emerald-300 transition-colors bg-transparent animate-fade-in"
+                placeholder={isStaff ? "Assigned Name" : "Name/Description"}
+                value={isStaff ? (log.assignedName || log.name || '') : log.name}
+                onChange={(e) => onChange(i, isStaff ? 'assignedName' : 'name', e.target.value)}
+              />
+              <input
+                className="flex-1 text-[10px] font-medium text-slate-500 outline-none border-b border-transparent focus:border-emerald-300 bg-transparent animate-fade-in"
+                placeholder={isStaff ? "Action Status" : "Action Taken"}
+                value={log.action}
+                onChange={(e) => onChange(i, 'action', e.target.value)}
+              />
+              <div className="flex items-center gap-1 w-12 text-right">
+                <Clock size={10} className="text-slate-300" />
+                <span className="text-[9px] font-black text-slate-400">{log.time}</span>
+              </div>
+              {isStaff && onToggleResolve && (
+                <div className="flex items-center gap-1.5 select-none shrink-0">
+                  <span className={`text-[8px] font-black uppercase tracking-wider ${isResolved ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {isResolved ? 'Resolved' : 'Pending'}
+                  </span>
+                  <button
+                    onClick={() => onToggleResolve(i, !isResolved)}
+                    className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 outline-none flex items-center ${isResolved ? 'bg-emerald-500 justify-end' : 'bg-red-500 justify-start'}`}
+                  >
+                    <div className="bg-white w-4 h-4 rounded-full shadow-md"></div>
+                  </button>
+                </div>
+              )}
+              {isSuperAdmin && (
+                <button onClick={() => onRemove(i)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-50"><Trash2 size={14} /></button>
+              )}
             </div>
-            {isSuperAdmin && (
-              <button onClick={() => onRemove(i)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-50"><Trash2 size={14} /></button>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

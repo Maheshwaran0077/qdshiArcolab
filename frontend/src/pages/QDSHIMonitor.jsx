@@ -6,6 +6,90 @@ import logo from '../assest/pivotPathLogo.svg';
 
 const API = process.env.REACT_APP_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin);
 
+// Concentric Donut showing Shift 1, Shift 2, Shift 3 overall metrics
+const ConcentricShiftsDonut = ({ s1, s2, s3 }) => {
+    // All coordinates designed for viewBox="0 0 260 150"
+    // center of rings at (75, 75), outer ring radius 58
+    const cx = 75, cy = 75;
+
+    const totalSuccessAll = s1.totalSuccess + s2.totalSuccess + s3.totalSuccess;
+    const totalAlertsAll = s1.totalAlerts + s2.totalAlerts + s3.totalAlerts;
+    const grandTotalAll = totalSuccessAll + totalAlertsAll;
+    const overallPercentAll = grandTotalAll ? Math.round((totalSuccessAll / grandTotalAll) * 100) : 0;
+
+    const getSuccessColor = (stats) => (stats.total === 0 || stats.successPercent === 0) ? "#94a3b8" : "#16a34a";
+    const getAlertColor   = (stats) => (stats.total === 0 || stats.alertPercent === 0)   ? "#94a3b8" : "#dc2626";
+
+    const renderRing = (radius, sw, stats, key) => {
+        const circ = 2 * Math.PI * radius;
+        const hasData = stats.total > 0;
+        const sOff = circ * (1 - stats.successPercent / 100);
+        const aOff = circ * (1 - stats.alertPercent / 100);
+        const rot  = -90 + (360 * stats.successPercent / 100);
+        return (
+            <g key={key}>
+                <circle cx={cx} cy={cy} r={radius} stroke="#e8edf2" strokeWidth={sw} fill="none" />
+                {hasData ? (<>
+                    <circle cx={cx} cy={cy} r={radius} stroke="#22c55e" strokeWidth={sw} fill="none"
+                        strokeDasharray={circ} strokeDashoffset={sOff} strokeLinecap="round"
+                        transform={`rotate(-90 ${cx} ${cy})`} />
+                    <circle cx={cx} cy={cy} r={radius} stroke="#ef4444" strokeWidth={sw} fill="none"
+                        strokeDasharray={circ} strokeDashoffset={aOff} strokeLinecap="round"
+                        transform={`rotate(${rot} ${cx} ${cy})`} />
+                </>) : (
+                    <circle cx={cx} cy={cy} r={radius} stroke="#cbd5e1" strokeWidth={sw} fill="none" />
+                )}
+            </g>
+        );
+    };
+
+    // Labels start at x=148 (cx+58+14 gap), three rows at y=38, y=75, y=118
+    const lx = cx + 58 + 14; // 147
+    const rows = [
+        { y: 38,  stats: s1, label: 'S1' },
+        { y: 75,  stats: s2, label: 'S2' },
+        { y: 118, stats: s3, label: 'S3' },
+    ];
+
+    return (
+        <div className="flex items-center justify-center bg-white/95 rounded-2xl shadow-md border border-slate-200 w-full" style={{ padding: '4px 6px' }}>
+            <svg viewBox="0 0 268 150" className="w-full h-auto" style={{ overflow: 'visible', display: 'block' }}>
+                {/* Rings */}
+                {renderRing(58, 10, s1, 'r1')}
+                {renderRing(44, 10, s2, 'r2')}
+                {renderRing(30, 10, s3, 'r3')}
+
+                {/* Center */}
+                <circle cx={cx} cy={cy} r={22} fill="#fff" stroke="#e2e8f0" strokeWidth="1.5" />
+                <text x={cx} y={cy - 4} textAnchor="middle" fontSize="14" fontWeight="900" fill="#0f172a">{overallPercentAll}%</text>
+                <text x={cx} y={cy + 10} textAnchor="middle" fontSize="6.5" fontWeight="700" fill="#64748b" letterSpacing="0.8">OVERALL</text>
+
+                {/* Pointers */}
+                <path d={`M ${cx+57} 38 L ${lx-6} 38`} stroke="#94a3b8" strokeWidth="1.2" fill="none"/>
+                <circle cx={cx+57} cy={38} r="1.8" fill="#94a3b8"/>
+
+                <path d={`M ${cx+58} ${cy} L ${lx-6} ${cy}`} stroke="#94a3b8" strokeWidth="1.2" fill="none"/>
+                <circle cx={cx+58} cy={cy} r="1.8" fill="#94a3b8"/>
+
+                <path d={`M ${cx+35} ${cy+36} L ${cx+50} 118 L ${lx-6} 118`} stroke="#94a3b8" strokeWidth="1.2" fill="none"/>
+                <circle cx={cx+35} cy={cy+36} r="1.8" fill="#94a3b8"/>
+
+                {/* Label rows */}
+                {rows.map(({ y, stats, label }) => (
+                    <g key={label}>
+                        <text x={lx}    y={y} alignmentBaseline="middle" fontSize="10" fontWeight="900" fill="#334155">{label}:</text>
+                        <text x={lx+18} y={y} alignmentBaseline="middle" fontSize="11" fontWeight="900" fill={getSuccessColor(stats)}>{stats.successPercent}%</text>
+                        <text x={lx+46} y={y} alignmentBaseline="middle" fontSize="10" fill="#94a3b8">/</text>
+                        <text x={lx+53} y={y} alignmentBaseline="middle" fontSize="11" fontWeight="900" fill={getAlertColor(stats)}>{stats.alertPercent}%</text>
+                    </g>
+                ))}
+            </svg>
+        </div>
+    );
+};
+
+
+
 // Reusable Circle Component
 const DailyCircle = ({ letter, selectedMonthIdx, selectedYear, colors }) => {
     const numDots = new Date(selectedYear, selectedMonthIdx + 1, 0).getDate();
@@ -25,13 +109,15 @@ const DailyCircle = ({ letter, selectedMonthIdx, selectedYear, colors }) => {
     });
 
     return (
-        <div className="flex justify-center items-center mb-2">
-            <svg width="150" height="150">
-                <circle cx={center} cy={center} r={48} fill="#e6e6e6" stroke="#444" strokeWidth="2.5" />
-                <circle cx={center} cy={center} r={55} fill="none" stroke="#666" strokeWidth="1.5" strokeDasharray="3 3" />
-                <text x={center} y={center} textAnchor="middle" dy=".35em" fontSize="55" fontWeight="800" fill="#222">{letter}</text>
-                {dots}
-            </svg>
+        <div className="flex justify-center items-center mb-2 relative z-10 transition-all duration-300 hover:scale-105 hover:z-20">
+            <div className="bg-white/40 backdrop-blur-xs rounded-full p-1.5 shadow-[0_8px_20px_-6px_rgba(0,0,0,0.15)] border border-white/60">
+                <svg width="150" height="150" style={{ overflow: 'visible' }}>
+                    <circle cx={center} cy={center} r={48} fill="#f1f5f9" stroke="#cbd5e1" strokeWidth="2.5" />
+                    <circle cx={center} cy={center} r={55} fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="3 3" />
+                    <text x={center} y={center + 1} textAnchor="middle" dy=".35em" fontSize="58" fontWeight="900" fill="#0f172a">{letter}</text>
+                    {dots}
+                </svg>
+            </div>
         </div>
     );
 };
@@ -149,7 +235,7 @@ export default function QDSHIMonitor() {
     const currentYear = targetDate.getFullYear();
     const currentMonthLong = targetDate.toLocaleString('default', { month: 'long' });
 
-    const [activeCarouselShift, setActiveCarouselShift] = useState('1');
+    const [activeCarouselShift, setActiveCarouselShift] = useState('overall');
     const [isHovered, setIsHovered] = useState(false);
 
     // Watch for native browser window changes (like pressing Esc to leave fullscreen)
@@ -179,7 +265,7 @@ export default function QDSHIMonitor() {
     useEffect(() => {
         if (isHovered) return;
         const interval = setInterval(() => {
-            setActiveCarouselShift(prev => prev === '1' ? '2' : prev === '2' ? '3' : '1');
+            setActiveCarouselShift(prev => prev === 'overall' ? '1' : prev === '1' ? '2' : prev === '2' ? '3' : 'overall');
         }, 5000);
         return () => clearInterval(interval);
     }, [isHovered]);
@@ -219,22 +305,41 @@ export default function QDSHIMonitor() {
 
     // Q Rows
     const qRows = Array.from({length: 31}, () => (['']));
-    const qLogs = qData.shifts?.[activeCarouselShift]?.issueLogs || [];
+    const qLogs = [];
+    if (activeCarouselShift === 'overall') {
+        ['1', '2', '3'].forEach(s => {
+            qLogs.push(...(qData.shifts?.[s]?.issueLogs || []));
+        });
+    } else {
+        qLogs.push(...(qData.shifts?.[activeCarouselShift]?.issueLogs || []));
+    }
     qLogs.forEach(log => {
         const d = new Date(log.rawDate);
         if (d.getMonth() === currentMonthIdx && d.getFullYear() === currentYear) {
             const dayIdx = d.getDate() - 1;
             if (dayIdx >= 0 && dayIdx < 31) {
-                qRows[dayIdx][0] = log.reason === 'Target Met' ? '✅' : 
-                                  log.deviationType === 'Human Error' ? 'HE' : 
-                                  log.deviationType === 'Process Error' ? 'PE' : '⚠️';
+                const currentVal = qRows[dayIdx][0];
+                const isDeviation = log.reason !== 'Target Met';
+                if (isDeviation) {
+                    qRows[dayIdx][0] = log.deviationType === 'Human Error' ? 'HE' : 
+                                      log.deviationType === 'Process Error' ? 'PE' : '⚠️';
+                } else if (!currentVal || currentVal === '') {
+                    qRows[dayIdx][0] = '✅';
+                }
             }
         }
     });
 
     // D Rows
     const dRows = Array.from({length: 31}, () => ({ plan: 0, actual: 0 }));
-    const dLogs = dData.shifts?.[activeCarouselShift]?.issueLogs || [];
+    const dLogs = [];
+    if (activeCarouselShift === 'overall') {
+        ['1', '2', '3'].forEach(s => {
+            dLogs.push(...(dData.shifts?.[s]?.issueLogs || []));
+        });
+    } else {
+        dLogs.push(...(dData.shifts?.[activeCarouselShift]?.issueLogs || []));
+    }
     dLogs.forEach(log => {
         const d = new Date(log.rawDate);
         if (d.getMonth() === currentMonthIdx && d.getFullYear() === currentYear) {
@@ -248,7 +353,14 @@ export default function QDSHIMonitor() {
 
     // S Rows
     const sRows = Array.from({length: 31}, () => null);
-    const sLogs = sData.shifts?.[activeCarouselShift]?.issueLogs || [];
+    const sLogs = [];
+    if (activeCarouselShift === 'overall') {
+        ['1', '2', '3'].forEach(s => {
+            sLogs.push(...(sData.shifts?.[s]?.issueLogs || []));
+        });
+    } else {
+        sLogs.push(...(sData.shifts?.[activeCarouselShift]?.issueLogs || []));
+    }
     sLogs.forEach(log => {
         const d = new Date(log.rawDate);
         if (d.getMonth() === currentMonthIdx && d.getFullYear() === currentYear) {
@@ -264,21 +376,36 @@ export default function QDSHIMonitor() {
 
     // H Rows
     const hRows = Array.from({length: 31}, () => ({ total: 0, absent: 0 }));
-    const activeHealthRecord = healthData.find(h => String(h.shift) === activeCarouselShift);
-    if (activeHealthRecord) {
-        const days = activeHealthRecord?.days || [];
-        days.forEach(day => {
-            const dayIdx = Number(day.date) - 1;
-            if (dayIdx >= 0 && dayIdx < 31) {
-                hRows[dayIdx].total += Number(day.totalStrength) || 0;
-                const total = Number(day.totalStrength) || 0;
-                const attendees = day.attendees != null ? Number(day.attendees) : total;
-                hRows[dayIdx].absent += (total - attendees);
-            }
+    if (activeCarouselShift === 'overall') {
+        healthData.forEach(shiftHealth => {
+            const days = shiftHealth?.days || [];
+            days.forEach(day => {
+                const dayIdx = Number(day.date) - 1;
+                if (dayIdx >= 0 && dayIdx < 31) {
+                    hRows[dayIdx].total += Number(day.totalStrength) || 0;
+                    const total = Number(day.totalStrength) || 0;
+                    const attendees = day.attendees != null ? Number(day.attendees) : total;
+                    hRows[dayIdx].absent += (total - attendees);
+                }
+            });
         });
+    } else {
+        const activeHealthRecord = healthData.find(h => String(h.shift) === activeCarouselShift);
+        if (activeHealthRecord) {
+            const days = activeHealthRecord?.days || [];
+            days.forEach(day => {
+                const dayIdx = Number(day.date) - 1;
+                if (dayIdx >= 0 && dayIdx < 31) {
+                    hRows[dayIdx].total += Number(day.totalStrength) || 0;
+                    const total = Number(day.totalStrength) || 0;
+                    const attendees = day.attendees != null ? Number(day.attendees) : total;
+                    hRows[dayIdx].absent += (total - attendees);
+                }
+            });
+        }
     }
 
-    const shiftDisplayName = activeCarouselShift === '1' ? 'Shift 1' : activeCarouselShift === '2' ? 'Shift 2' : 'Shift 3';
+    const shiftDisplayName = activeCarouselShift === 'overall' ? 'Overall' : activeCarouselShift === '1' ? 'Shift 1' : activeCarouselShift === '2' ? 'Shift 2' : 'Shift 3';
 
     const getColors = (rows, type) => {
         const colors = Array(31).fill('#222');
@@ -322,10 +449,109 @@ export default function QDSHIMonitor() {
         return colors;
     };
 
-    const qColors = getColors(qRows, 'Q');
-    const dColors = getColors(dRows, 'D');
-    const sColors = getColors(sRows, 'S');
-    const hColors = getColors(hRows, 'H');
+    const getColorsForShift = (shiftVal) => {
+        const qRowsLocal = Array.from({length: 31}, () => (['']));
+        const qLogsLocal = qData.shifts?.[shiftVal]?.issueLogs || [];
+        qLogsLocal.forEach(log => {
+            const d = new Date(log.rawDate);
+            if (d.getMonth() === currentMonthIdx && d.getFullYear() === currentYear) {
+                const dayIdx = d.getDate() - 1;
+                if (dayIdx >= 0 && dayIdx < 31) {
+                    qRowsLocal[dayIdx][0] = log.reason === 'Target Met' ? '✅' : 
+                                      log.deviationType === 'Human Error' ? 'HE' : 
+                                      log.deviationType === 'Process Error' ? 'PE' : '⚠️';
+                }
+            }
+        });
+
+        const dRowsLocal = Array.from({length: 31}, () => ({ plan: 0, actual: 0 }));
+        const dLogsLocal = dData.shifts?.[shiftVal]?.issueLogs || [];
+        dLogsLocal.forEach(log => {
+            const d = new Date(log.rawDate);
+            if (d.getMonth() === currentMonthIdx && d.getFullYear() === currentYear) {
+                const dayIdx = d.getDate() - 1;
+                if (dayIdx >= 0 && dayIdx < 31) {
+                    dRowsLocal[dayIdx].plan += Number(log.planned) || 0;
+                    dRowsLocal[dayIdx].actual += Number(log.dispatched) || 0;
+                }
+            }
+        });
+
+        const sRowsLocal = Array.from({length: 31}, () => null);
+        const sLogsLocal = sData.shifts?.[shiftVal]?.issueLogs || [];
+        sLogsLocal.forEach(log => {
+            const d = new Date(log.rawDate);
+            if (d.getMonth() === currentMonthIdx && d.getFullYear() === currentYear) {
+                const dayIdx = d.getDate() - 1;
+                if (dayIdx >= 0 && dayIdx < 31) {
+                    if (!sRowsLocal[dayIdx]) sRowsLocal[dayIdx] = { nm: 0, ua: 0, lti: 0 };
+                    sRowsLocal[dayIdx].nm += Number(log.numNearMiss) || 0;
+                    sRowsLocal[dayIdx].ua += Number(log.numUnsafeActs) || 0;
+                    sRowsLocal[dayIdx].lti += Number(log.numSafetyIncidents) || 0;
+                }
+            }
+        });
+
+        const hRowsLocal = Array.from({length: 31}, () => ({ total: 0, absent: 0 }));
+        const activeHealthRecordLocal = healthData.find(h => String(h.shift) === shiftVal);
+        if (activeHealthRecordLocal) {
+            const days = activeHealthRecordLocal?.days || [];
+            days.forEach(day => {
+                const dayIdx = Number(day.date) - 1;
+                if (dayIdx >= 0 && dayIdx < 31) {
+                    hRowsLocal[dayIdx].total += Number(day.totalStrength) || 0;
+                    const total = Number(day.totalStrength) || 0;
+                    const attendees = day.attendees != null ? Number(day.attendees) : total;
+                    hRowsLocal[dayIdx].absent += (total - attendees);
+                }
+            });
+        }
+
+        return {
+            Q: getColors(qRowsLocal, 'Q'),
+            D: getColors(dRowsLocal, 'D'),
+            S: getColors(sRowsLocal, 'S'),
+            H: getColors(hRowsLocal, 'H')
+        };
+    };
+
+    const mergeOverallColors = (colorsList) => {
+        const merged = Array(31).fill('#222');
+        for (let i = 0; i < 31; i++) {
+            let hasRed = false;
+            let hasGreen = false;
+            colorsList.forEach(c => {
+                if (c[i] === '#dc3545') {
+                    hasRed = true;
+                } else if (c[i] === '#28a745') {
+                    hasGreen = true;
+                }
+            });
+            if (hasRed) {
+                merged[i] = '#dc3545';
+            } else if (hasGreen) {
+                merged[i] = '#28a745';
+            }
+        }
+        return merged;
+    };
+
+    let qColors, dColors, sColors, hColors;
+    if (activeCarouselShift === 'overall') {
+        const s1Colors = getColorsForShift('1');
+        const s2Colors = getColorsForShift('2');
+        const s3Colors = getColorsForShift('3');
+
+        qColors = mergeOverallColors([s1Colors.Q, s2Colors.Q, s3Colors.Q]);
+        dColors = mergeOverallColors([s1Colors.D, s2Colors.D, s3Colors.D]);
+        sColors = mergeOverallColors([s1Colors.S, s2Colors.S, s3Colors.S]);
+        hColors = mergeOverallColors([s1Colors.H, s2Colors.H, s3Colors.H]);
+    } else {
+        qColors = getColors(qRows, 'Q');
+        dColors = getColors(dRows, 'D');
+        sColors = getColors(sRows, 'S');
+        hColors = getColors(hRows, 'H');
+    }
 
     const getIssues = (letter) => {
         let issuesList = [];
@@ -365,6 +591,127 @@ export default function QDSHIMonitor() {
     const sActions = getActions('S');
     const hActions = getActions('H');
 
+    // Calculate overall monthly metrics for S1, S2, S3
+    const getShiftOverallPercentages = (shiftVal) => {
+        let totalSuccess = 0;
+        let totalAlerts = 0;
+
+        // 1. Quality (Q)
+        const qLogs = qData.shifts?.[shiftVal]?.issueLogs || [];
+        qLogs.forEach(log => {
+            const d = new Date(log.rawDate);
+            if (d.getMonth() === currentMonthIdx && d.getFullYear() === currentYear) {
+                if (log.reason === 'Target Met') totalSuccess++;
+                else totalAlerts++;
+            }
+        });
+
+        // 2. Delivery (D)
+        const dLogs = dData.shifts?.[shiftVal]?.issueLogs || [];
+        dLogs.forEach(log => {
+            const d = new Date(log.rawDate);
+            if (d.getMonth() === currentMonthIdx && d.getFullYear() === currentYear) {
+                const plan = Number(log.planned) || 0;
+                const actual = Number(log.dispatched) || 0;
+                if (plan > 0 || actual > 0) {
+                    if (actual >= plan) totalSuccess++;
+                    else totalAlerts++;
+                }
+            }
+        });
+
+        // 3. Safety (S)
+        const sLogs = sData.shifts?.[shiftVal]?.issueLogs || [];
+        sLogs.forEach(log => {
+            const d = new Date(log.rawDate);
+            if (d.getMonth() === currentMonthIdx && d.getFullYear() === currentYear) {
+                if (log.numNearMiss > 0 || log.numUnsafeActs > 0 || log.numSafetyIncidents > 0) {
+                    totalAlerts++;
+                } else {
+                    totalSuccess++;
+                }
+            }
+        });
+
+        // 4. Health (H)
+        const shiftHealth = healthData.find(h => String(h.shift) === shiftVal);
+        if (shiftHealth) {
+            (shiftHealth.days || []).forEach(day => {
+                const total = Number(day.totalStrength) || 0;
+                const attendees = day.attendees != null ? Number(day.attendees) : total;
+                const absent = total - attendees;
+                if (total > 0) {
+                    if (absent > 0) totalAlerts++;
+                    else totalSuccess++;
+                }
+            });
+        }
+
+        const total = totalSuccess + totalAlerts;
+        const successPercent = total ? Math.round((totalSuccess / total) * 100) : 0;
+        const alertPercent = total ? Math.round((totalAlerts / total) * 100) : 0;
+
+        return { successPercent, alertPercent, totalSuccess, totalAlerts, total };
+    };
+
+    const shift1Stats = getShiftOverallPercentages('1');
+    const shift2Stats = getShiftOverallPercentages('2');
+    const shift3Stats = getShiftOverallPercentages('3');
+
+    const yearlyPercent = useMemo(() => {
+        let totalSuccess = 0;
+        let totalAlerts = 0;
+
+        metrics.forEach(metric => {
+            if (!['Q', 'D', 'S'].includes(metric.letter)) return;
+            ['1', '2', '3'].forEach(shiftVal => {
+                const logs = metric.shifts?.[shiftVal]?.issueLogs || [];
+                logs.forEach(log => {
+                    const d = new Date(log.rawDate);
+                    if (d.getFullYear() === currentYear) {
+                        if (metric.letter === 'Q') {
+                            if (log.reason === 'Target Met') totalSuccess++;
+                            else totalAlerts++;
+                        } else if (metric.letter === 'D') {
+                            const plan = Number(log.planned) || 0;
+                            const actual = Number(log.dispatched) || 0;
+                            const breakdownsVal = Number(log.breakdowns || log.breakdownCount || 0);
+                            if (plan > 0 || actual > 0) {
+                                const efficiency = (actual / (plan || 1)) * 100;
+                                const fail = efficiency < 90 || breakdownsVal > 0;
+                                if (fail) totalAlerts++;
+                                else totalSuccess++;
+                            }
+                        } else if (metric.letter === 'S') {
+                            if (log.numNearMiss > 0 || log.numUnsafeActs > 0 || log.numSafetyIncidents > 0) {
+                                totalAlerts++;
+                            } else {
+                                totalSuccess++;
+                            }
+                        }
+                    }
+                });
+            });
+        });
+
+        healthData.forEach(shiftHealth => {
+            if (Number(shiftHealth.year) === currentYear) {
+                (shiftHealth.days || []).forEach(day => {
+                    const total = Number(day.totalStrength) || 0;
+                    const attendees = day.attendees != null ? Number(day.attendees) : total;
+                    const absent = total - attendees;
+                    if (total > 0) {
+                        if (absent > 0) totalAlerts++;
+                        else totalSuccess++;
+                    }
+                });
+            }
+        });
+
+        const total = totalSuccess + totalAlerts;
+        return total ? Math.round((totalSuccess / total) * 100) : 0;
+    }, [metrics, healthData, currentYear]);
+
     return (
         <div 
             ref={boardRef} 
@@ -372,13 +719,13 @@ export default function QDSHIMonitor() {
         >
             {/* Shift Indicators */}
             <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 flex gap-2">
-                {['1', '2', '3'].map(s => (
+                {['overall', '1', '2', '3'].map(s => (
                     <div 
                         key={s} 
                         onClick={() => setActiveCarouselShift(s)}
                         className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest cursor-pointer transition-all ${activeCarouselShift === s ? 'bg-emerald-600 text-white shadow-lg scale-110' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}
                     >
-                        Shift {s}
+                        {s === 'overall' ? 'Overall' : `Shift ${s}`}
                     </div>
                 ))}
             </div>
@@ -398,7 +745,7 @@ export default function QDSHIMonitor() {
                 >
                     {Object.entries(DEPT_MAP).map(([k, v]) => (
                         <option key={k} value={k}>{v}</option>
-                    ))}
+                     ))}
                 </select>
                 
                 {/* Full Screen Lock/Unlock Toggle Button */}
@@ -418,10 +765,14 @@ export default function QDSHIMonitor() {
                 
                 {/* Header Information */}
                 <div className="flex flex-wrap board-header-info mb-4 items-center">
-                    <div className="w-full md:w-3/12">
+                    <div className="w-full md:w-2/12">
                         <div className="logo-placeholder">
                             <img src={logo} alt="PivotPath Logo" className="h-10" />
                         </div>
+                    </div>
+                    <div className="w-full md:w-2/12 text-center select-none">
+                        <strong>Yearly Performance</strong>
+                        <span className="text-rose-600 font-black text-sm block mt-0.5">{yearlyPercent}% ({currentYear})</span>
                     </div>
                     <div className="w-full md:w-2/12 text-center">
                         <strong>Area</strong>
@@ -431,7 +782,7 @@ export default function QDSHIMonitor() {
                         <strong>Month / Year</strong>
                         <span className="text-emerald-600">{currentMonthLong.substring(0, 3).toUpperCase()} / {currentYear}</span>
                     </div>
-                    <div className="w-full md:w-3/12 text-center">
+                    <div className="w-full md:w-2/12 text-center">
                         <strong>Meeting Timing</strong>
                         <span className="text-blue-600">06:00-06:15 | 14:00-14:15</span>
                     </div>
@@ -444,7 +795,9 @@ export default function QDSHIMonitor() {
                 {/* Grid Layout (4 columns for QDSH) */}
                 <div className="qdshi-grid">
                     {/* Row 0: Grid Headers (Circles) */}
-                    <div className="grid-cell empty-cell flex justify-end items-center"></div>
+                    <div className="grid-cell flex justify-center items-center">
+                        <ConcentricShiftsDonut s1={shift1Stats} s2={shift2Stats} s3={shift3Stats} />
+                    </div>
                     <div className="grid-cell"><DailyCircle letter="Q" selectedMonthIdx={currentMonthIdx} selectedYear={currentYear} colors={qColors} /></div>
                     <div className="grid-cell"><DailyCircle letter="D" selectedMonthIdx={currentMonthIdx} selectedYear={currentYear} colors={dColors} /></div>
                     <div className="grid-cell"><DailyCircle letter="S" selectedMonthIdx={currentMonthIdx} selectedYear={currentYear} colors={sColors} /></div>
